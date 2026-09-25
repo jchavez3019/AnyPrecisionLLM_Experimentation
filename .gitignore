@@ -1,0 +1,20 @@
+.env
+outputs/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Read-only reference clone with its own git history (ADR 0001, ADR 0002).
+any-precision-llm/
+
+# Third-party paper; kept locally, not redistributed.
+*.pdf
+
+# IDE and tool state.
+.idea/
+.jbeval/
+.visual-docs/
+git_diff.txt
