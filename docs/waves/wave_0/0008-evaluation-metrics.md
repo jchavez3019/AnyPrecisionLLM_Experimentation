@@ -12,9 +12,9 @@ Metric arithmetic and bits accounting are pure `torch` and plain Python, so they
 
 | File | Contents |
 | --- | --- |
-| `evaluation/metrics.py` | `ChunkOutputs`, `ChunkMetrics`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary` |
+| `evaluation/metrics.py` | `LogitHead`, `ChunkOutputs`, `ChunkMetrics`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary` |
 | `evaluation/bits.py` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport` |
-| `evaluation/results.py` | `Results`, `ReferenceEntry`, `QuantizedEntry`, `PerplexityResult` |
+| `evaluation/results.py` | `RESULTS_SCHEMA_VERSION`, `Results`, `ReferenceEntry`, `QuantizedEntry`, `PerplexityResult`, `make_reference_entry`, `make_quantized_entry` |
 
 ## Per-chunk metrics
 
@@ -84,6 +84,7 @@ def chunk_metrics(q, ref, tokens, slice_len) -> ChunkMetrics:
         kl=torch.cat(kl_parts) if kl_parts else None,                             # [T] float32
         agree=torch.cat(agree_parts) if agree_parts else None,                    # [T] bool
         mean_nll=nll_sum / (T - 1),
+        num_tokens=T,
     )
 ```
 
@@ -160,7 +161,7 @@ for mode in cfg.modes:
         entries.append(make_quantized_entry(mode, bits, artifact.manifest.key, summaries, cfg.eval.kl.dataset, bits_report))
 ```
 
-`make_quantized_entry` raises `ValueError` if the KL dataset's summary has no KL values, which can only happen through a programming error in the loop.
+`make_quantized_entry` and `make_reference_entry` live in `evaluation/results.py` and turn `MetricSummary` values into schema entries. `make_quantized_entry` raises `ValueError` if the KL dataset's summary has no KL values, which can only happen through a programming error in the loop.
 
 Every forward pass runs under `torch.inference_mode()` with `use_cache=False`. Both models are loaded once, in `eval_dtype`, and put in `eval()` mode. The reference model is never passed to `set_precision`.
 
@@ -195,8 +196,7 @@ def layer_bits_per_weight(bits: int, n: int) -> float:
 def parent_bits_per_weight(seed_bits: int, parent_bits: int, n: int) -> float:
     """B + (16 / n) * sum_{b=b0}^{B} 2**b: parent indices plus every codebook."""
 
-@dataclass(frozen=True)
-class BitsReport:
+class BitsReport(FrozenModel):
     quantized_params: int
     total_params: int
     per_bits: dict[int, float]            # parameter-weighted average over quantized layers
@@ -258,13 +258,13 @@ class Results(FrozenModel):
     fisher_key: str
     versions: dict[str, str]
     created_at: datetime
-    bits: BitsReportModel                 # pydantic mirror of BitsReport
+    bits: BitsReport
     reference: ReferenceEntry
     entries: list[QuantizedEntry]         # ordered by (mode, bits)
     seconds: float
 ```
 
-`Results` stores the resolved `EvaluateRunConfig` itself, so a results file can be re-validated and diffed against another without parsing the Hydra logs.
+`BitsReport` is itself a `FrozenModel`, so `Results` embeds it directly and no mirror type is needed. `Results` also validates that every entry's mode and bit-width appear in the config and that its KL dataset is the configured one. `Results` stores the resolved `EvaluateRunConfig` itself, so a results file can be re-validated and diffed against another without parsing the Hydra logs.
 
 ## Verification
 
@@ -272,7 +272,7 @@ Tests for this spec are listed in spec 0010 under `tests/evaluation/`. They run 
 
 - `chunk_metrics` with identical reference and quantized outputs gives KL 0 (within $10^{-6}$) and agreement 1.
 - KL matches `torch.nn.functional.kl_div(q_logp, ref_logp, log_target=True, reduction="none").sum(-1)` computed on the full logits, and is the same for `slice_len=None` and for every integer `slice_len`, including values that do not divide $T$.
-- The mean NLL equals `ForCausalLMLoss(logits[None], tokens[None], vocab_size)` from `transformers` on the full logits, and does not depend on `slice_len`.
+- The mean NLL equals `cross_entropy(logits[:-1], tokens[1:])` on the full logits, and does not depend on `slice_len`. That shifted cross-entropy is what `transformers` computes for `labels=input_ids`; `tests/models/test_heads.py` checks the equivalence on the tiny Granite model, so the metrics test needs no model.
 - `StreamingMetrics` perplexity is $\exp$ of the mean of the per-chunk means. A two-chunk example is constructed where this differs from the token-level mean, and the test checks the documented choice.
 - The KL quantile equals `torch.quantile` over the concatenated positions; `summary()` without updates raises.
 - `layer_bits_per_weight(3, 1024) == 3.125`, `layer_bits_per_weight(8, 1024) == 12.0`, and `parent_bits_per_weight(3, 8, 1024) == 15.875`, matching the ADR 0004 table. `bits_report` on Granite's 168 shapes, with `total_params = 352_379_904`, reproduces the table above.

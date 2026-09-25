@@ -66,7 +66,7 @@ AnyPrecisionLLM/
 │   ├── artifacts/
 │   │   ├── __init__.py
 │   │   ├── keys.py                      # fisher_key, quantized_key
-│   │   ├── manifest.py                  # FisherManifest, QuantizedManifest, ArtifactStats
+│   │   ├── manifest.py                  # module_entries, FisherManifest, QuantizedManifest, ArtifactStats
 │   │   └── store.py                     # ArtifactStore, QuantizedArtifact, atomic writes
 │   ├── inference/
 │   │   ├── __init__.py
@@ -75,7 +75,7 @@ AnyPrecisionLLM/
 │       ├── __init__.py
 │       ├── bits.py                      # bits-per-weight accounting
 │       ├── metrics.py                   # streaming KL, agreement, NLL
-│       ├── results.py                   # Results schema
+│       ├── results.py                   # Results schema, make_reference_entry, make_quantized_entry
 │       └── pipeline.py                  # run_evaluation (entry-script body)
 └── tests/                               # spec 0010
 ```
@@ -119,7 +119,7 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 | `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model`, `run_quantization` | 0005, 0009 |
 | `anyprec.artifacts` | `FISHER_SCHEMA_VERSION`, `QUANTIZED_SCHEMA_VERSION`, `fisher_snapshot`, `quantized_snapshot`, `fisher_key`, `quantized_key`, `ModuleEntry`, `module_entries`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats`, `ArtifactStore`, `QuantizedArtifact`, `FisherMeta`, `QuantizedMeta`, `ArtifactNotFoundError`, `ArtifactMismatchError` | 0002, 0006 |
 | `anyprec.inference` | `set_precision`, `snapshot_weights`, `restore_weights`, `PrecisionError` | 0007 |
-| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `ChunkOutputs`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `Results`, `run_evaluation` | 0008, 0009 |
+| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `LogitHead`, `ChunkOutputs`, `ChunkMetrics`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `RESULTS_SCHEMA_VERSION`, `Results`, `ReferenceEntry`, `QuantizedEntry`, `PerplexityResult`, `make_reference_entry`, `make_quantized_entry`, `run_evaluation` | 0008, 0009 |
 
 ## Verification
 
