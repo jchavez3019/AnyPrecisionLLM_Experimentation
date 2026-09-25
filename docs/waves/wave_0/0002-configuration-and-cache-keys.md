@@ -99,6 +99,7 @@ row_chunk: 1024            # rows per kernel call; bounds GPU memory
 # configs/eval/default.yaml
 chunk_len: 2048
 max_chunks: null           # cap chunks per dataset for smoke runs; null = all
+lm_head_chunk_tokens: 256  # positions per LM-head slice (a power of two); null = all positions at once
 datasets:
   wikitext2: {path: Salesforce/wikitext, name: wikitext-2-raw-v1, split: test, text_field: text, joiner: "\n\n"}
   c4: {path: allenai/c4, data_files: {validation: en/c4-validation.00000-of-00008.json.gz},
@@ -182,9 +183,11 @@ class KLConfig(_Frozen):
 class EvalConfig(_Frozen):
     chunk_len: PositiveInt
     max_chunks: PositiveInt | None = None
+    lm_head_chunk_tokens: PositiveInt | None = 256
     datasets: dict[Literal["wikitext2", "c4"], EvalDatasetConfig]
     kl: KLConfig
     bits: list[int]
+    # field_validator: lm_head_chunk_tokens is None or a power of two
     # model_validator: kl.dataset in datasets; bits sorted, unique, each in [1, 8]
 
 class QuantizeRunConfig(_Frozen):
@@ -306,7 +309,7 @@ These are small helpers in `anyprec/utils/`. They are listed here because every 
 Tests for this spec are listed in spec 0010 under `tests/config/`, `tests/utils/`, `tests/rotation/`, and `tests/artifacts/test_keys.py`.
 
 - Every YAML file composes with Hydra's `compose` API (no `@hydra.main`) and validates into its run config.
-- Invalid inputs raise `ValidationError`: an unknown key, `seed_bits > parent_bits`, `parent_bits = 9`, an eval bit outside the quantizer's range, or `kl.dataset` missing from `datasets`.
+- Invalid inputs raise `ValidationError`: an unknown key, `seed_bits > parent_bits`, `parent_bits = 9`, an eval bit outside the quantizer's range, `kl.dataset` missing from `datasets`, or `lm_head_chunk_tokens` of 0, 300, or -256. `null` and 1, 256, and 2048 are accepted.
 - `rotation=hadamard` validates as configuration, and `resolve_rotation` raises `NotImplementedError` for it.
 - Keys are stable, insensitive to dictionary key order, and sensitive to exactly the fields in the snapshots. A hypothesis test perturbs one field at a time and asserts which keys change.
 - `stable_seed` is deterministic across processes (a pinned expected value), and different names give different seeds.

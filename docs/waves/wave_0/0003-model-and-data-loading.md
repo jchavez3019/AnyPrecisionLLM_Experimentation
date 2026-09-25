@@ -92,18 +92,22 @@ def logit_head(model: PreTrainedModel) -> Callable[[torch.Tensor], torch.Tensor]
     return lambda hidden: head(hidden) / scale
 
 @torch.inference_mode()
-def check_sliced_logits(model: PreTrainedModel, input_ids: torch.Tensor, slice_len: int, atol: float = 1e-4) -> None:
-    """Raise SlicedLogitsError unless the sliced path matches model(input_ids).logits within atol."""
+def check_sliced_logits(model: PreTrainedModel, input_ids: torch.Tensor, slice_len: int | None, atol: float = 1e-4) -> None:
+    """Raise SlicedLogitsError unless body plus head matches model(input_ids).logits within atol.
+
+    slice_len None applies the head to every position at once, which still checks the body/head split.
+    """
     full = model(input_ids=input_ids, use_cache=False).logits[0]                 # [T, V]
     hidden = body_hidden_states(model, input_ids)                                # [T, H]
     head = logit_head(model)
-    sliced = torch.cat([head(hidden[s : s + slice_len]) for s in range(0, hidden.shape[0], slice_len)])
+    step = hidden.shape[0] if slice_len is None else slice_len
+    sliced = torch.cat([head(hidden[s : s + step]) for s in range(0, hidden.shape[0], step)])
     error = (sliced - full).abs().max().item()
     if error > atol:
         raise SlicedLogitsError(f"sliced logits differ from forward() by {error:.3g} (atol {atol})")
 ```
 
-The pipeline calls `check_sliced_logits` on a 512-token prefix of the KL dataset, with the same `slice_len` as the metrics. At that length the full logits are 0.2 GB. The `atol` of $10^{-4}$ is loose enough for float32 summation-order differences, and far below any real change to the head, such as soft-capping.
+The pipeline calls `check_sliced_logits` on a 512-token prefix of the KL dataset, with `slice_len = eval.lm_head_chunk_tokens`, the same setting the metrics use. At that length the full logits are 0.2 GB. The `atol` of $10^{-4}$ is loose enough for float32 summation-order differences, and far below any real change to the head, such as soft-capping.
 
 ## Tokenization boundary
 
@@ -194,7 +198,7 @@ Joining the first $k$ documents and tokenizing once, with $k$ a multiple of 1000
 
 Tests for this spec are listed in spec 0010 under `tests/models/` and `tests/data/`. None of them downloads anything.
 
-- On the tiny Granite fixture, with `logits_scaling=4`, `check_sliced_logits` passes for several `slice_len` values, including one that does not divide $T$. It raises `SlicedLogitsError` when the test monkeypatches the head's forward to soft-cap its output.
+- On the tiny Granite fixture, with `logits_scaling=4`, `check_sliced_logits` passes for `None` and for several `slice_len` values, including one that does not divide $T$. It raises `SlicedLogitsError` when the test monkeypatches the head's forward to soft-cap its output.
 - `find_quantizable_linears` on the tiny Granite fixture (spec 0010) returns the 12 expected names in `named_modules()` order. It raises `QuantizableModuleError` when `expected_count` is wrong, and when two matched modules are made to share one weight.
 - `sample_calibration` with a character-level encoder and an in-memory list of strings:
   - it skips documents that are too short;

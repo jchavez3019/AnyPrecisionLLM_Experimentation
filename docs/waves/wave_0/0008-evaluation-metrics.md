@@ -18,7 +18,16 @@ Metric arithmetic and bits accounting are pure `torch` and plain Python, so they
 
 ## Per-chunk metrics
 
-Full logits for a 2048-token chunk are `[2048, 100352]`, 0.82 GB in float32, and Granite's `forward` briefly holds two copies while it applies `logits_scaling`. The metrics are all per position, so they never need every position's logits at once. Each model runs its body once per chunk, producing hidden states `[T, H]` (8 MB), and the LM head is applied to 256 positions at a time. The result is mathematically identical to `model(x).logits`. On the tiny Granite model the difference was below $10^{-7}$, from floating-point summation order.
+Full logits for a 2048-token chunk are `[2048, 100352]`, 0.82 GB in float32, and Granite's `forward` briefly holds two copies while it applies `logits_scaling`. The metrics are all per position, so they never need every position's logits at once. Each model runs its body once per chunk, producing hidden states `[T, H]` (8 MB). The LM head is then applied to `eval.lm_head_chunk_tokens` positions at a time (default 256). The result is mathematically identical to `model(x).logits`. On the tiny Granite model the difference was below $10^{-7}$, from floating-point summation order.
+
+`eval.lm_head_chunk_tokens` is configured in Hydra (spec 0002):
+
+| Value | Behaviour |
+| --- | --- |
+| A power of two, such as `256` | The head and the metrics run on slices of that many positions; only one slice of logits per model exists at a time |
+| `null` | The head runs on all $T$ positions at once, and the metrics are computed on the full `[T, V]` logits in a single step |
+
+`null` suits a GPU with more memory, or CPU tests. For a 2048-token chunk on Granite, it needs about 3.3 GB of logit-sized float32 tensors on top of the two models, which does not fit the 6 GB laptop GPU. Either value computes the same numbers, up to floating-point summation order, so the setting is not a protocol change. It is recorded in the config stored in `results.json`, but results with different values remain comparable.
 
 ```python
 LogitHead = Callable[[Tensor], Tensor]            # [S, H] -> [S, V], including any logit scaling
@@ -34,7 +43,7 @@ def chunk_metrics(
     q: ChunkOutputs,
     ref: ChunkOutputs | None,       # None for perplexity-only datasets
     tokens: Tensor,                 # [T] int64, same device
-    slice_len: int = 256,
+    slice_len: int | None,          # eval.lm_head_chunk_tokens; None processes all T positions at once
 ) -> ChunkMetrics:
     """Per-position KL, top-1 agreement, and the chunk's mean next-token NLL for model q.
 
@@ -44,16 +53,19 @@ def chunk_metrics(
 ```
 
 ```python
-def chunk_metrics(q, ref, tokens, slice_len=256) -> ChunkMetrics:
+def chunk_metrics(q, ref, tokens, slice_len) -> ChunkMetrics:
     T = tokens.shape[0]
     kl_parts, agree_parts = [], []
     nll_sum = 0.0
 
-    for s in range(0, T, slice_len):
+    # A null setting is one slice spanning the whole chunk, so both modes share a single code path.
+
+    step = T if slice_len is None else slice_len
+    for s in range(0, T, step):
         # One slice of positions: apply the LM head to [S, H] -> [S, V], then work in float32.
         # Only one slice of logits per model exists at any time.
 
-        e = min(s + slice_len, T)
+        e = min(s + step, T)
         q_logp = q.head(q.hidden[s:e]).float().log_softmax(-1)                   # [S, V]
 
         # Next-token NLL for positions whose target lies inside the chunk.
@@ -122,7 +134,7 @@ for dataset_name, tokens in eval_tokens.items():                      # tokens: 
     for chunk in iter_chunks(tokens, cfg.eval.chunk_len, cfg.eval.max_chunks):   # [1, T]
         x = chunk.to(device)                                              # [1, T]
         ref_out = ChunkOutputs(body_hidden_states(reference, x), ref_head)  # hidden [T, H]
-        ref_stats.update(chunk_metrics(ref_out, None, x[0]))
+        ref_stats.update(chunk_metrics(ref_out, None, x[0], cfg.eval.lm_head_chunk_tokens))
     reference_results[dataset_name] = ref_stats.summary()
 
 for mode in cfg.modes:
@@ -140,7 +152,7 @@ for mode in cfg.modes:
                 x = chunk.to(device)                                      # [1, T]
                 q_out = ChunkOutputs(body_hidden_states(quantized, x), q_head)
                 ref_out = ChunkOutputs(body_hidden_states(reference, x), ref_head) if with_kl else None
-                stats.update(chunk_metrics(q_out, ref_out, x[0]))
+                stats.update(chunk_metrics(q_out, ref_out, x[0], cfg.eval.lm_head_chunk_tokens))
             summaries[dataset_name] = stats.summary()
 
         # One entry per (mode, bits): perplexity for every dataset, KL fields from the KL dataset.
@@ -158,7 +170,7 @@ The second is a same-weights check. Before the sweep, the pipeline runs the firs
 
 ## GPU memory budget
 
-Evaluation is the most memory-hungry stage, because two float32 models are resident at once. Slicing the LM head keeps the logits small. The budget below is for a 2048-token chunk on the 6 GB laptop GPU.
+Evaluation is the most memory-hungry stage, because two float32 models are resident at once. Slicing the LM head keeps the logits small. The budget below is for a 2048-token chunk on the 6 GB laptop GPU, with the default `lm_head_chunk_tokens: 256`. With `null`, the logit rows below grow by a factor of eight, to about 3.3 GB.
 
 | Item | Size |
 | --- | --- |
@@ -259,7 +271,7 @@ class Results(_Frozen):
 Tests for this spec are listed in spec 0010 under `tests/evaluation/`. They run on the CPU with random hidden states and a seeded random `nn.Linear` head, so no model is loaded. The expected values come from the full logits `head(hidden)`.
 
 - `chunk_metrics` with identical reference and quantized outputs gives KL 0 (within $10^{-6}$) and agreement 1.
-- KL matches `torch.nn.functional.kl_div(q_logp, ref_logp, log_target=True, reduction="none").sum(-1)` computed on the full logits, and is the same for every `slice_len`, including values that do not divide $T$.
+- KL matches `torch.nn.functional.kl_div(q_logp, ref_logp, log_target=True, reduction="none").sum(-1)` computed on the full logits, and is the same for `slice_len=None` and for every integer `slice_len`, including values that do not divide $T$.
 - The mean NLL equals `ForCausalLMLoss(logits[None], tokens[None], vocab_size)` from `transformers` on the full logits, and does not depend on `slice_len`.
 - `StreamingMetrics` perplexity is $\exp$ of the mean of the per-chunk means. A two-chunk example is constructed where this differs from the token-level mean, and the test checks the documented choice.
 - The KL quantile equals `torch.quantile` over the concatenated positions; `summary()` without updates raises.

@@ -33,7 +33,7 @@ $$
 \end{aligned}
 $$
 
-Report the mean $\mathrm{KL}_t$, its 99th percentile (rare large disagreements matter for generation), and mean top-1 agreement. Logits over the 100,352-token vocabulary are never cached; both models are resident at once (about 1.4 GB each in float32) and compared chunk by chunk. Within a chunk, each model's decoder body runs once, and the LM head is applied to a few hundred positions at a time. A full `[2048, 100352]` float32 logit tensor is 0.82 GB, and Granite's `forward` briefly holds two of them while it applies `logits_scaling`, which would not fit next to two models on a 6 GB GPU. The sliced path is mathematically identical to `forward`, and each run verifies this at startup before measuring anything.
+Report the mean $\mathrm{KL}_t$, its 99th percentile (rare large disagreements matter for generation), and mean top-1 agreement. Logits over the 100,352-token vocabulary are never cached; both models are resident at once (about 1.4 GB each in float32) and compared chunk by chunk. Within a chunk, each model's decoder body runs once, and the LM head is applied to `lm_head_chunk_tokens` positions at a time (default 256; `null` applies it to the whole chunk at once). A full `[2048, 100352]` float32 logit tensor is 0.82 GB, and Granite's `forward` briefly holds two of them while it applies `logits_scaling`, which would not fit next to two models on a 6 GB GPU. The sliced path is mathematically identical to `forward`, so the setting changes memory use, not results, and each run verifies the equivalence at startup before measuring anything.
 
 ### Metric 2: perplexity
 
@@ -93,6 +93,7 @@ Each evaluation run writes `results.json` into its Hydra run directory, validate
 # configs/eval/default.yaml
 chunk_len: 2048
 max_chunks: null          # cap on chunks per dataset for smoke runs; null evaluates every chunk
+lm_head_chunk_tokens: 256 # positions per LM-head slice, a power of two; null = whole chunk at once
 datasets:
   wikitext2: {path: Salesforce/wikitext, name: wikitext-2-raw-v1, split: test, text_field: text, joiner: "\n\n"}
   c4: {path: allenai/c4, data_files: {validation: en/c4-validation.00000-of-00008.json.gz},

@@ -159,8 +159,8 @@ def run_evaluation(cfg: EvaluateRunConfig, run_dir: Path) -> Results:
     # before any quantized weight is written (spec 0008).
 
     probe = eval_tokens[cfg.eval.kl.dataset][None, :512].to(device)               # [1, 512]
-    check_sliced_logits(reference, probe, slice_len=256)
-    check_sliced_logits(quantized, probe, slice_len=256)
+    check_sliced_logits(reference, probe, cfg.eval.lm_head_chunk_tokens)
+    check_sliced_logits(quantized, probe, cfg.eval.lm_head_chunk_tokens)
     _assert_identical_models(reference, quantized, eval_tokens[cfg.eval.kl.dataset], cfg.eval, device)
     report = bits_report([m.shape for m in modules], _count_params(reference), cfg.quantizer.seed_bits, cfg.quantizer.parent_bits)
 
