@@ -12,9 +12,11 @@ Six modules own the Hugging Face boundary. Each keeps untyped library objects lo
 
 | File | Contents |
 | --- | --- |
-| `src/anyprec/models/loading.py` | `load_model`, `load_tokenizer` |
+| `src/anyprec/models/loading.py` | `CausalLM`, `load_model`, `load_tokenizer` |
 | `src/anyprec/models/discovery.py` | `find_quantizable_linears`, `QuantizableModuleError` |
-| `src/anyprec/models/heads.py` | `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` (spec 0008) |
+| `src/anyprec/models/heads.py` | `causal_lm_loss` (spec 0004), `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` (spec 0008) |
+
+`models/` is the only subpackage that touches a Hugging Face model object. `CausalLM` is an alias of `transformers.PreTrainedModel`, so modules outside the boundary (`sensitivity/`, the pipelines) can name the type without importing `transformers`, and every untyped model output, such as `ModelOutput.loss` or `last_hidden_state`, is narrowed to a `Tensor` inside `models/`.
 | `src/anyprec/data/hub.py` | `load_texts` (spec 0009) |
 | `src/anyprec/data/calibration.py` | `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError` |
 | `src/anyprec/data/evaluation_text.py` | `load_eval_tokens`, `iter_chunks` |
@@ -24,7 +26,9 @@ Six modules own the Hugging Face boundary. Each keeps untyped library objects lo
 Models come from `from_pretrained`, as ADR 0002 requires. The dtype is a parameter because quantization uses `model.dtype` (bfloat16) while evaluation uses `model.eval_dtype` (float32).
 
 ```python
-def load_model(cfg: ModelConfig, dtype: torch.dtype, device: torch.device) -> PreTrainedModel:
+type CausalLM = PreTrainedModel
+
+def load_model(cfg: ModelConfig, dtype: torch.dtype, device: torch.device) -> CausalLM:
     """Load the causal LM in inference mode on one device."""
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model_id, revision=cfg.revision, dtype=dtype, device_map=str(device)
@@ -77,6 +81,16 @@ Evaluation applies the LM head in slices of positions to bound GPU memory (spec 
 ```python
 class SlicedLogitsError(RuntimeError):
     """Body plus sliced head does not reproduce model(x).logits for this model."""
+
+def causal_lm_loss(model: CausalLM, input_ids: torch.Tensor) -> torch.Tensor:
+    """Mean next-token NLL of [1, T] token ids, as a 0-d tensor attached to the autograd graph.
+
+    Uses labels=input_ids, so Hugging Face shifts the labels and averages over T - 1 targets.
+    """
+    loss = model(input_ids=input_ids, labels=input_ids, use_cache=False).loss
+    if not isinstance(loss, torch.Tensor):
+        raise TypeError(f"{type(model).__name__} returned no loss for labelled input")
+    return loss
 
 def body_hidden_states(model: PreTrainedModel, input_ids: torch.Tensor) -> torch.Tensor:
     """Run the decoder body only: [1, T] token ids -> [T, H] final-norm hidden states."""

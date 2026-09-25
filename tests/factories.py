@@ -4,11 +4,18 @@ Every config is an instance of the pydantic schemas in ``anyprec.config.schemas`
 can never drift from the schema it stands in for.
 """
 
+import re
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import cast
 
 import torch
+from torch import nn
 from transformers import GraniteMoeHybridConfig, GraniteMoeHybridForCausalLM
 
+from anyprec.artifacts.keys import fisher_key, fisher_snapshot, quantized_snapshot
+from anyprec.artifacts.manifest import ModuleEntry
+from anyprec.artifacts.store import ArtifactStore, FisherMeta, QuantizedArtifact, QuantizedMeta
 from anyprec.config.schemas import (
     CalibrationConfig,
     EvalConfig,
@@ -23,6 +30,9 @@ from anyprec.config.schemas import (
     QuantizeRunConfig,
     RotationNone,
 )
+from anyprec.quantization.model import quantize_model
+from anyprec.sensitivity.fisher import FisherResult
+from anyprec.utils.hashing import JsonValue, sha256_key
 
 TINY_PATTERN: str = (
     r"^model\.layers\.\d+\.(self_attn\.(q|k|v|o)_proj|shared_mlp\.(input|output)_linear)$"
@@ -58,6 +68,95 @@ def tiny_model(seed: int = 0) -> GraniteMoeHybridForCausalLM:
     """
     torch.default_generator.manual_seed(seed)
     return GraniteMoeHybridForCausalLM(tiny_granite_config()).eval()
+
+
+def target_weights(model: nn.Module) -> dict[str, torch.Tensor]:
+    """Select the tiny model's quantizable weight matrices in module order.
+
+    :param model: The tiny Granite model.
+    :return: Qualified module name to its live ``[m, n]`` weight parameter.
+    """
+    pattern = re.compile(TINY_PATTERN)
+    modules = cast("Iterator[tuple[str, nn.Module]]", model.named_modules())
+    return {
+        name: module.weight
+        for name, module in modules
+        if pattern.match(name) and isinstance(module, nn.Linear)
+    }
+
+
+def random_fisher(weights: Mapping[str, torch.Tensor], seed: int = 0) -> dict[str, torch.Tensor]:
+    """Draw a positive float32 Fisher diagonal per weight from a local generator.
+
+    :param weights: Name to weight matrix.
+    :param seed: Generator seed.
+    :return: Name to ``[m, n]`` Fisher tensor on the CPU.
+    """
+    generator = torch.Generator().manual_seed(seed)
+    return {
+        name: torch.rand(tuple(weight.shape), generator=generator) + 1e-3
+        for name, weight in weights.items()
+    }
+
+
+def fisher_result(weights: Mapping[str, torch.Tensor], num_losses: int) -> FisherResult:
+    """A Fisher result with random diagonals and ``num_losses`` plausible per-sequence losses.
+
+    :param weights: Name to weight matrix.
+    :param num_losses: Length of the losses vector.
+    :return: The result, with CPU tensors.
+    """
+    losses = torch.linspace(3.0, 3.5, num_losses)
+    return FisherResult(diagonals=random_fisher(weights), losses=losses, seconds=1.5)
+
+
+def fisher_snapshot_and_key(config: QuantizeRunConfig) -> tuple[dict[str, JsonValue], str]:
+    """The Fisher snapshot of a run config and its full key.
+
+    :param config: The run config.
+    :return: ``(snapshot, sha256_key(snapshot))``.
+    """
+    snapshot = fisher_snapshot(config.model, config.calibration, config.rotation)
+    return snapshot, sha256_key(snapshot)
+
+
+def fisher_meta(config: QuantizeRunConfig) -> FisherMeta:
+    """Fisher manifest metadata for a CPU run of ``config``.
+
+    :param config: The run config.
+    :return: The metadata.
+    """
+    return FisherMeta.from_config(config, torch.device("cpu"))
+
+
+def stored_tiny_artifact(
+    model: nn.Module, config: QuantizeRunConfig, store: ArtifactStore
+) -> QuantizedArtifact:
+    """Quantize the tiny model with a random Fisher, save it, and load it back through the store.
+
+    Keys and snapshots come from the real key functions, so the artifact is exactly what the
+    quantization pipeline would write for ``config``.
+
+    :param model: The tiny Granite model; its weights are only read.
+    :param config: The run config, whose quantizer settings are used.
+    :param store: The store to write into.
+    :return: The reloaded artifact, with CPU tensors.
+    """
+    weights = target_weights(model)
+    quantization = quantize_model(
+        weights, random_fisher(weights), config.quantizer, torch.device("cpu")
+    )
+
+    # Real snapshots and keys, so the round trip exercises the same identity checks as a run.
+
+    f_key = fisher_key(config.model, config.calibration, config.rotation)
+    snapshot = quantized_snapshot(f_key, config.quantizer)
+    key = sha256_key(snapshot)
+    store.save_quantized(
+        key, snapshot, quantization, QuantizedMeta.from_config(config, torch.device("cpu"))
+    )
+    modules = [ModuleEntry(name=n, shape=(w.shape[0], w.shape[1])) for n, w in weights.items()]
+    return store.load_quantized(key, snapshot, modules)
 
 
 def model_config() -> ModelConfig:
@@ -134,10 +233,11 @@ def eval_config() -> EvalConfig:
     )
 
 
-def quantize_run_config(root: Path) -> QuantizeRunConfig:
+def quantize_run_config(root: Path, mode: QuantizerMode = "incremental") -> QuantizeRunConfig:
     """A complete quantization run config for the tiny model on the CPU.
 
     :param root: Temporary output directory.
+    :param mode: Quantizer mode.
     :return: A ``QuantizeRunConfig``.
     """
     return QuantizeRunConfig(
@@ -145,7 +245,7 @@ def quantize_run_config(root: Path) -> QuantizeRunConfig:
         device="cpu",
         model=model_config(),
         calibration=calibration_config(),
-        quantizer=quantizer_config(),
+        quantizer=quantizer_config(mode=mode),
         rotation=RotationNone(kind="none"),
         output=output_config(root),
     )

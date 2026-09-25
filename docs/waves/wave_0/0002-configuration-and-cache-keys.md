@@ -115,24 +115,24 @@ bits: [3, 4, 5, 6, 7, 8]
 All schemas live in `anyprec/config/schemas.py`. Every model is frozen and forbids extra keys, so a typo in YAML or on the command line is a validation error rather than a silently ignored field.
 
 ```python
-class _Frozen(BaseModel):
-    """Base for every config schema: immutable, and unknown keys are rejected."""
+class FrozenModel(BaseModel):
+    """Base for every config, manifest (spec 0006), and results (spec 0008) schema: immutable, unknown keys rejected."""
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 DTypeName = Literal["bfloat16", "float16", "float32"]
 
-class QuantizableModules(_Frozen):
+class QuantizableModules(FrozenModel):
     pattern: str                       # validated: re.compile succeeds
     expected_count: PositiveInt
 
-class ModelConfig(_Frozen):
+class ModelConfig(FrozenModel):
     model_id: str
     revision: str
     dtype: DTypeName
     eval_dtype: DTypeName
     quantizable_modules: QuantizableModules
 
-class CalibrationConfig(_Frozen):
+class CalibrationConfig(FrozenModel):
     path: str
     data_files: dict[str, str] | None = None
     name: str | None = None
@@ -142,7 +142,7 @@ class CalibrationConfig(_Frozen):
     seq_len: PositiveInt
     seed: int
 
-class QuantizerConfig(_Frozen):
+class QuantizerConfig(FrozenModel):
     mode: Literal["incremental", "standalone"]
     seed_bits: int = Field(ge=1, le=8)
     parent_bits: int = Field(ge=1, le=8)     # uint8 indices cap the parent at 8 bits
@@ -152,10 +152,10 @@ class QuantizerConfig(_Frozen):
     row_chunk: PositiveInt
     # model_validator: seed_bits <= parent_bits
 
-class RotationNone(_Frozen):
+class RotationNone(FrozenModel):
     kind: Literal["none"]
 
-class RotationHadamard(_Frozen):
+class RotationHadamard(FrozenModel):
     kind: Literal["hadamard"]
     axis: Literal["in_features"]
     randomized_signs: bool
@@ -163,11 +163,11 @@ class RotationHadamard(_Frozen):
 
 RotationConfig = Annotated[RotationNone | RotationHadamard, Field(discriminator="kind")]
 
-class OutputConfig(_Frozen):
+class OutputConfig(FrozenModel):
     base_dir: Path
     cache_dir: Path
 
-class EvalDatasetConfig(_Frozen):
+class EvalDatasetConfig(FrozenModel):
     path: str
     name: str | None = None
     data_files: dict[str, str] | None = None
@@ -176,11 +176,11 @@ class EvalDatasetConfig(_Frozen):
     joiner: str
     max_tokens: PositiveInt | None = None
 
-class KLConfig(_Frozen):
+class KLConfig(FrozenModel):
     dataset: Literal["wikitext2", "c4"]
     quantile: float = Field(gt=0.0, lt=1.0)
 
-class EvalConfig(_Frozen):
+class EvalConfig(FrozenModel):
     chunk_len: PositiveInt
     max_chunks: PositiveInt | None = None
     lm_head_chunk_tokens: PositiveInt | None = 256
@@ -190,7 +190,7 @@ class EvalConfig(_Frozen):
     # field_validator: lm_head_chunk_tokens is None or a power of two
     # model_validator: kl.dataset in datasets; bits sorted, unique, each in [1, 8]
 
-class QuantizeRunConfig(_Frozen):
+class QuantizeRunConfig(FrozenModel):
     seed: int
     device: str                         # "cuda", "cuda:0", or "cpu"
     model: ModelConfig
@@ -199,7 +199,7 @@ class QuantizeRunConfig(_Frozen):
     rotation: RotationConfig
     output: OutputConfig
 
-class EvaluateRunConfig(_Frozen):
+class EvaluateRunConfig(FrozenModel):
     seed: int
     device: str
     modes: list[Literal["incremental", "standalone"]]   # non-empty, unique

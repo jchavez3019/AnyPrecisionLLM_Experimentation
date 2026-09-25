@@ -41,11 +41,11 @@ outputs/cache/
 The manifests are pydantic models with the same frozen, extra-forbidding base as the config schemas (spec 0002). One schema per artifact kind keeps the fields that apply to only one kind out of the other.
 
 ```python
-class ModuleEntry(_Frozen):
+class ModuleEntry(FrozenModel):
     name: str
     shape: tuple[PositiveInt, PositiveInt]            # [m, n]
 
-class _ManifestBase(_Frozen):
+class ManifestBase(FrozenModel):
     schema_version: int
     key: str                                           # full 64-hex SHA-256
     model_id: str
@@ -56,14 +56,14 @@ class _ManifestBase(_Frozen):
     versions: dict[str, str]
     created_at: datetime                               # UTC
 
-class FisherManifest(_ManifestBase):
+class FisherManifest(ManifestBase):
     kind: Literal["fisher"]
     num_sequences: PositiveInt
     seq_len: PositiveInt
     mean_loss: float
     seconds: float
 
-class QuantizedManifest(_ManifestBase):
+class QuantizedManifest(ManifestBase):
     kind: Literal["quantized"]
     mode: Literal["incremental", "standalone"]
     seed_bits: int
@@ -71,7 +71,7 @@ class QuantizedManifest(_ManifestBase):
     parent_key: str                                    # full Fisher key
     seconds: float
 
-class ArtifactStats(_Frozen):
+class ArtifactStats(FrozenModel):
     relative_error: dict[str, dict[int, float]]        # module -> bits -> J / sum(f w^2)
     lloyd_iterations: dict[str, int]
 ```
@@ -139,7 +139,7 @@ def _atomic_directory(final: Path) -> Iterator[Path]:
         raise
 ```
 
-`save_*` writes the tensor files first and `manifest.json` last, inside the temporary directory. Tensors are made contiguous and moved to the CPU before `safetensors.torch.save_file`. Leftover `.*.tmp` directories from a killed process are never read, because lookups only open `<key16>/manifest.json`.
+`save_*` writes the tensor files first and `manifest.json` last, inside the temporary directory. Tensors are made contiguous and moved to the CPU, serialized with `safetensors.torch.save`, and written with `Path.write_bytes`; the bytes API is used because its signatures are fully typed under strict pyright. Leftover `.*.tmp` directories from a killed process are never read, because lookups only open `<key16>/manifest.json`.
 
 ## Load-time checks
 
@@ -155,7 +155,7 @@ A lookup either returns an artifact that matches the request exactly, or raises.
 | `modules` equals the discovered modules, names and shapes in order | `ArtifactMismatchError` |
 | Every expected tensor file exists, and holds exactly the manifest's module names with the expected dtype and shape | `ArtifactMismatchError` |
 
-The module check is what catches a changed `quantizable_modules.pattern` that happens to keep the same count, since that field is not part of the Fisher key (spec 0002). All tensors are loaded with `safetensors.torch.load_file(..., device="cpu")`.
+The module check is what catches a changed `quantizable_modules.pattern` that happens to keep the same count, since that field is not part of the Fisher key (spec 0002). All tensors are loaded on the CPU with `safetensors.torch.load(path.read_bytes())`.
 
 ## Verification
 

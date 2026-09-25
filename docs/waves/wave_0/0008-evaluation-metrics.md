@@ -228,17 +228,17 @@ def bits_report(shapes: Sequence[tuple[int, int]], total_params: int, seed_bits:
 ```python
 RESULTS_SCHEMA_VERSION: int = 1
 
-class PerplexityResult(_Frozen):
+class PerplexityResult(FrozenModel):
     dataset: Literal["wikitext2", "c4"]
     perplexity: float
     mean_nll: float
     num_chunks: int
     num_tokens: int
 
-class ReferenceEntry(_Frozen):
+class ReferenceEntry(FrozenModel):
     perplexity: list[PerplexityResult]
 
-class QuantizedEntry(_Frozen):
+class QuantizedEntry(FrozenModel):
     mode: Literal["incremental", "standalone"]
     bits: int
     artifact_key: str
@@ -250,7 +250,7 @@ class QuantizedEntry(_Frozen):
     bits_per_weight: float
     bits_per_weight_whole_model: float
 
-class Results(_Frozen):
+class Results(FrozenModel):
     schema_version: int
     config: EvaluateRunConfig
     model_id: str

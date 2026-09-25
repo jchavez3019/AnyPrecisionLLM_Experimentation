@@ -19,13 +19,17 @@ type EvalDatasetName = Literal["wikitext2", "c4"]
 BitWidth = Annotated[int, Field(ge=1, le=8)]
 
 
-class _Frozen(BaseModel):
-    """Base for every config schema: immutable, and unknown keys are rejected."""
+class FrozenModel(BaseModel):
+    """Base for every config, manifest, and results schema: immutable, and unknown keys are rejected.
+
+    It is public so the artifact manifests (spec 0006) and the results schema (spec 0008) share
+    the exact same validation rules as the configs.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class QuantizableModules(_Frozen):
+class QuantizableModules(FrozenModel):
     """Which linear layers to quantize, and how many there must be.
 
     :param pattern: Regular expression matched against qualified module names.
@@ -45,7 +49,7 @@ class QuantizableModules(_Frozen):
         return self
 
 
-class ModelConfig(_Frozen):
+class ModelConfig(FrozenModel):
     """The Hugging Face checkpoint and its quantizable modules (ADR 0002).
 
     :param model_id: Hub repository ID.
@@ -62,7 +66,7 @@ class ModelConfig(_Frozen):
     quantizable_modules: QuantizableModules
 
 
-class CalibrationConfig(_Frozen):
+class CalibrationConfig(FrozenModel):
     """Calibration source and sampling rule (ADR 0002).
 
     :param path: ``datasets.load_dataset`` path.
@@ -85,7 +89,7 @@ class CalibrationConfig(_Frozen):
     seed: int
 
 
-class QuantizerConfig(_Frozen):
+class QuantizerConfig(FrozenModel):
     """Fisher-weighted k-means settings (ADR 0003, Section 7).
 
     :param mode: ``incremental`` (nested, the any-precision method) or ``standalone`` (baseline).
@@ -115,13 +119,13 @@ class QuantizerConfig(_Frozen):
         return self
 
 
-class RotationNone(_Frozen):
+class RotationNone(FrozenModel):
     """No rotation before clustering (ADR 0006)."""
 
     kind: Literal["none"]
 
 
-class RotationHadamard(_Frozen):
+class RotationHadamard(FrozenModel):
     """Randomized Hadamard rotation before clustering; validated but not implemented (ADR 0006).
 
     :param axis: Rotation axis; only ``in_features`` is defined.
@@ -138,7 +142,7 @@ class RotationHadamard(_Frozen):
 type RotationConfig = Annotated[RotationNone | RotationHadamard, Field(discriminator="kind")]
 
 
-class OutputConfig(_Frozen):
+class OutputConfig(FrozenModel):
     """Output locations.
 
     :param base_dir: Root of Hydra run directories and the cache.
@@ -149,7 +153,7 @@ class OutputConfig(_Frozen):
     cache_dir: Path
 
 
-class EvalDatasetConfig(_Frozen):
+class EvalDatasetConfig(FrozenModel):
     """One evaluation text source (ADR 0004, Metric 2).
 
     :param path: ``datasets.load_dataset`` path.
@@ -170,7 +174,7 @@ class EvalDatasetConfig(_Frozen):
     max_tokens: PositiveInt | None = None
 
 
-class KLConfig(_Frozen):
+class KLConfig(FrozenModel):
     """KL divergence settings (ADR 0004, Metric 1).
 
     :param dataset: Dataset on which KL and top-1 agreement are measured.
@@ -181,7 +185,7 @@ class KLConfig(_Frozen):
     quantile: float = Field(gt=0.0, lt=1.0)
 
 
-class EvalConfig(_Frozen):
+class EvalConfig(FrozenModel):
     """Evaluation protocol (ADR 0004).
 
     :param chunk_len: Tokens per evaluation chunk.
@@ -217,7 +221,7 @@ class EvalConfig(_Frozen):
         return self
 
 
-class QuantizeRunConfig(_Frozen):
+class QuantizeRunConfig(FrozenModel):
     """Validated configuration of one quantization run.
 
     :param seed: Global seed for ``random``, NumPy, and PyTorch.
@@ -238,7 +242,7 @@ class QuantizeRunConfig(_Frozen):
     output: OutputConfig
 
 
-class EvaluateRunConfig(_Frozen):
+class EvaluateRunConfig(FrozenModel):
     """Validated configuration of one evaluation run.
 
     :param seed: Global seed for ``random``, NumPy, and PyTorch.

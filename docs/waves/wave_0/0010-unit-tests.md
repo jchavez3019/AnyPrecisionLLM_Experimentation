@@ -14,7 +14,7 @@ These rules apply to every test file. They make a failing test explain itself, a
 - **Every test has a Given / When / Then docstring.**
 
   ```python
-  def test_set_precision_leaves_unquantized_parameters_untouched(tiny_artifact: TinyArtifact) -> None:
+  def test_set_precision_leaves_unquantized_parameters_untouched(tiny_artifact: QuantizedArtifact) -> None:
       """
       Given: the tiny Granite model and an incremental artifact covering its 12 linears.
       When: set_precision is called at 3 bits.
@@ -89,7 +89,7 @@ Fixtures build real objects of the library's own types. Configs are pydantic ins
 | `quantizer_config` | function, parametrized | `QuantizerConfig(mode=..., seed_bits=2, parent_bits=4, seed=0, lloyd_max_iter=50, empty_eps=1e-12, row_chunk=16)` |
 | `quantize_run_config` | function | `QuantizeRunConfig` with `device="cpu"`, `output.cache_dir = tmp_path / "cache"` |
 | `evaluate_run_config` | function | `EvaluateRunConfig` with `chunk_len=32`, `max_chunks=2`, `bits=[2, 3, 4]` |
-| `tiny_artifact` | function | A `QuantizedArtifact` from `quantize_model` on `tiny_model` with a random positive Fisher |
+| `tiny_artifact` | function | A `QuantizedArtifact` from `quantize_model` on `tiny_model` with a random positive Fisher, saved and reloaded through `ArtifactStore`; parametrized over both quantizer modes |
 | `offline_loaders` | function | Monkeypatches `load_model`, `load_tokenizer`/`make_encoder`, and `load_texts` in both pipeline modules |
 
 ```python

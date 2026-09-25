@@ -32,7 +32,7 @@ class FisherResult:
     seconds: float
 
 def estimate_fisher(
-    model: PreTrainedModel,
+    model: CausalLM,                     # from anyprec.models.loading; sensitivity never imports transformers
     calibration: torch.Tensor,
     targets: Mapping[str, nn.Linear],
     progress: Callable[[int, int], None] | None = None,
@@ -71,7 +71,7 @@ def estimate_fisher(model, calibration, targets, progress=None) -> FisherResult:
         started = time.perf_counter()
         for i in range(calibration.shape[0]):
             tokens = calibration[i : i + 1].to(device)                                    # [1, T]
-            loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss           # mean token NLL
+            loss = causal_lm_loss(model, tokens)                                          # mean token NLL, spec 0003
             loss.backward()
             losses[i] = loss.detach().float().cpu()
             if progress is not None:

@@ -43,9 +43,9 @@ AnyPrecisionLLM/
 │   │   └── resolve.py                   # resolve_rotation (raises for hadamard)
 │   ├── models/
 │   │   ├── __init__.py
-│   │   ├── loading.py                   # load_model, load_tokenizer
+│   │   ├── loading.py                   # CausalLM, load_model, load_tokenizer
 │   │   ├── discovery.py                 # find_quantizable_linears
-│   │   └── heads.py                     # body_hidden_states, logit_head, check_sliced_logits
+│   │   └── heads.py                     # causal_lm_loss, body_hidden_states, logit_head, check_sliced_logits
 │   ├── data/
 │   │   ├── __init__.py
 │   │   ├── hub.py                       # load_texts: the only call to datasets.load_dataset
@@ -102,7 +102,7 @@ Five rules apply on top of the layering:
 - **Hydra stops at the entry scripts.** Only `quantization/quantize_any_precision.py` and `evaluation/evaluate_any_precision.py` import `hydra` or `omegaconf`, plus `anyprec.config.loading`, which receives a `DictConfig`. Everything else receives frozen pydantic objects.
 - **No module reads the environment or the working directory.** Paths come from `OutputConfig` (spec 0002).
 - **Kernels are device-agnostic.** `quantization.{rows, init, lloyd, split, layer}` never call `.cuda()`. They work on whatever device their inputs are on.
-- **Heavy dependencies are loaded at the boundary.** `transformers` and `datasets` are imported only in `models/`, `data/`, and the two `pipeline.py` modules. The kernels import only `torch`.
+- **Heavy dependencies are loaded at the boundary.** `transformers` and `datasets` are imported only in `models/`, `data/`, and the two `pipeline.py` modules. The kernels import only `torch`. Code outside `models/` that runs a model, such as `sensitivity/`, names it as `anyprec.models.loading.CausalLM` and calls helpers from `models/heads.py`, so untyped model outputs are narrowed in one place.
 
 ## Public API
 
@@ -110,10 +110,10 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 
 | Subpackage | Public names | Spec |
 | --- | --- | --- |
-| `anyprec.config` | `QuantizeRunConfig`, `EvaluateRunConfig`, `ModelConfig`, `QuantizableModules`, `CalibrationConfig`, `QuantizerConfig`, `RotationConfig`, `RotationNone`, `RotationHadamard`, `EvalConfig`, `EvalDatasetConfig`, `KLConfig`, `OutputConfig`, `load_quantize_config`, `load_evaluate_config` | 0002 |
+| `anyprec.config` | `QuantizeRunConfig`, `EvaluateRunConfig`, `ModelConfig`, `QuantizableModules`, `CalibrationConfig`, `QuantizerConfig`, `RotationConfig`, `RotationNone`, `RotationHadamard`, `EvalConfig`, `EvalDatasetConfig`, `KLConfig`, `OutputConfig`, `FrozenModel`, `load_quantize_config`, `load_evaluate_config` | 0002 |
 | `anyprec.utils` | `JsonValue`, `DTypeName`, `canonical_json`, `sha256_key`, `stable_seed`, `seed_everything`, `torch_dtype`, `resolve_device`, `library_versions` | 0002, 0009 |
 | `anyprec.rotation` | `resolve_rotation` | 0002 |
-| `anyprec.models` | `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError`, `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` | 0003 |
+| `anyprec.models` | `CausalLM`, `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError`, `causal_lm_loss`, `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` | 0003 |
 | `anyprec.data` | `load_texts`, `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError`, `load_eval_tokens`, `iter_chunks` | 0003, 0009 |
 | `anyprec.sensitivity` | `estimate_fisher`, `FisherResult` | 0004 |
 | `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model`, `run_quantization` | 0005, 0009 |

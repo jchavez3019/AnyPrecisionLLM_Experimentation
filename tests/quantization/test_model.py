@@ -1,45 +1,12 @@
 """Tests for whole-model quantization (spec 0005)."""
 
-import re
-from collections.abc import Iterator
-from typing import cast
-
 import pytest
 import torch
-from torch import nn
 from transformers import GraniteMoeHybridForCausalLM
 
 from anyprec.config.schemas import QuantizerConfig
 from anyprec.quantization.model import quantize_model
 from tests import factories
-
-
-def _target_weights(model: nn.Module) -> dict[str, torch.Tensor]:
-    """Select the tiny model's quantizable weight matrices in module order.
-
-    :param model: The tiny Granite model.
-    :return: Qualified module name to its live ``[m, n]`` weight parameter.
-    """
-    pattern = re.compile(factories.TINY_PATTERN)
-    modules = cast("Iterator[tuple[str, nn.Module]]", model.named_modules())
-    return {
-        name: module.weight
-        for name, module in modules
-        if pattern.match(name) and isinstance(module, nn.Linear)
-    }
-
-
-def _random_fisher(weights: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """Draw a positive Fisher diagonal per weight from a local generator.
-
-    :param weights: Name to weight matrix.
-    :return: Name to ``[m, n]`` Fisher tensor.
-    """
-    generator = torch.Generator().manual_seed(0)
-    return {
-        name: torch.rand(weight.shape, generator=generator) + 1e-3
-        for name, weight in weights.items()
-    }
 
 
 def test_quantize_model_covers_targets_in_order_and_leaves_weights_untouched(
@@ -51,12 +18,16 @@ def test_quantize_model_covers_targets_in_order_and_leaves_weights_untouched(
     Then: results and progress callbacks follow discovery order, each parent LUT has one row
         per output feature, and every model parameter is bitwise unchanged.
     """
-    weights = _target_weights(tiny_model)
+    weights = factories.target_weights(tiny_model)
     before = {name: p.detach().clone() for name, p in tiny_model.named_parameters()}
     seen: list[str] = []
 
     result = quantize_model(
-        weights, _random_fisher(weights), quantizer_config, torch.device("cpu"), seen.append
+        weights,
+        factories.random_fisher(weights),
+        quantizer_config,
+        torch.device("cpu"),
+        seen.append,
     )
 
     # Order and coverage, then row counts, then the read-only guarantee on the live parameters.
@@ -76,8 +47,8 @@ def test_quantize_model_results_do_not_depend_on_module_order(
     When: both orders are quantized.
     Then: every module gets bitwise-identical codebooks, because its seed depends only on its name.
     """
-    weights = _target_weights(tiny_model)
-    fisher = _random_fisher(weights)
+    weights = factories.target_weights(tiny_model)
+    fisher = factories.random_fisher(weights)
     cfg = factories.quantizer_config()
     reverse = dict(reversed(list(weights.items())))
 

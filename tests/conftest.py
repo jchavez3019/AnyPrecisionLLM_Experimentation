@@ -6,6 +6,7 @@ import pytest
 from hypothesis import HealthCheck, settings
 from transformers import GraniteMoeHybridConfig, GraniteMoeHybridForCausalLM
 
+from anyprec.artifacts.store import ArtifactStore, QuantizedArtifact
 from anyprec.config.schemas import (
     EvaluateRunConfig,
     ModelConfig,
@@ -61,3 +62,15 @@ def quantize_run_config(tmp_path: Path) -> QuantizeRunConfig:
 def evaluate_run_config(tmp_path: Path) -> EvaluateRunConfig:
     """An evaluation run config writing under ``tmp_path``."""
     return factories.evaluate_run_config(tmp_path)
+
+
+@pytest.fixture(params=["incremental", "standalone"])
+def tiny_artifact(
+    request: pytest.FixtureRequest, tmp_path: Path, tiny_model: GraniteMoeHybridForCausalLM
+) -> QuantizedArtifact:
+    """A tiny artifact built from ``tiny_model``, saved and reloaded, in each quantizer mode."""
+    mode: QuantizerMode = request.param
+    config = factories.quantize_run_config(tmp_path, mode)
+    return factories.stored_tiny_artifact(
+        tiny_model, config, ArtifactStore(config.output.cache_dir)
+    )
