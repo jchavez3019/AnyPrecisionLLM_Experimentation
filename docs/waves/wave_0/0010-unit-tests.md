@@ -44,7 +44,8 @@ tests/
 ├── rotation/
 │   └── test_resolve.py
 ├── models/
-│   └── test_discovery.py            # spec 0003
+│   ├── test_discovery.py            # spec 0003
+│   └── test_heads.py                # spec 0003: sliced head equals forward()
 ├── data/
 │   ├── test_calibration.py
 │   └── test_evaluation_text.py
@@ -168,7 +169,7 @@ Each spec lists its verification cases in its own final section, and this table 
 | --- | --- |
 | [0001](0001-package-layout.md) | `test_layering.py` |
 | [0002](0002-configuration-and-cache-keys.md) | `config/*`, `utils/test_utils.py`, `rotation/test_resolve.py`, `artifacts/test_keys.py` |
-| [0003](0003-model-and-data-loading.md) | `models/test_discovery.py`, `data/*` |
+| [0003](0003-model-and-data-loading.md) | `models/test_discovery.py`, `models/test_heads.py`, `data/*` |
 | [0004](0004-fisher-estimation.md) | `sensitivity/test_fisher.py` |
 | [0005](0005-kmeans-and-upscaling.md) | `quantization/test_{rows,init,lloyd,split,layer,model}.py` |
 | [0006](0006-artifact-store.md) | `artifacts/test_manifest.py`, `artifacts/test_store.py` |

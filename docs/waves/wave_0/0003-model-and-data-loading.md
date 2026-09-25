@@ -8,12 +8,13 @@ This spec covers the boundary with Hugging Face: loading Granite and its tokeniz
 
 ## Files
 
-Five modules own the Hugging Face boundary. Each keeps untyped library objects local and returns explicitly typed values.
+Six modules own the Hugging Face boundary. Each keeps untyped library objects local and returns explicitly typed values.
 
 | File | Contents |
 | --- | --- |
 | `src/anyprec/models/loading.py` | `load_model`, `load_tokenizer` |
 | `src/anyprec/models/discovery.py` | `find_quantizable_linears`, `QuantizableModuleError` |
+| `src/anyprec/models/heads.py` | `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` (spec 0008) |
 | `src/anyprec/data/hub.py` | `load_texts` (spec 0009) |
 | `src/anyprec/data/calibration.py` | `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError` |
 | `src/anyprec/data/evaluation_text.py` | `load_eval_tokens`, `iter_chunks` |
@@ -68,6 +69,41 @@ def find_quantizable_linears(model: nn.Module, cfg: QuantizableModules) -> dict[
 ```
 
 The order of the returned dictionary is the canonical module order everywhere else: the Fisher cache, artifact manifests, `stats.json`, and results.
+
+## Body and LM head
+
+Evaluation applies the LM head in slices of positions to bound GPU memory (spec 0008). These three functions are the only code that knows how a causal LM splits into a body and a head. The split was verified on the tiny Granite model: `get_decoder()` returns `GraniteMoeHybridModel`, `get_output_embeddings()` returns the tied `nn.Linear`, and sliced logits match `forward` to within $10^{-7}$.
+
+```python
+class SlicedLogitsError(RuntimeError):
+    """Body plus sliced head does not reproduce model(x).logits for this model."""
+
+def body_hidden_states(model: PreTrainedModel, input_ids: torch.Tensor) -> torch.Tensor:
+    """Run the decoder body only: [1, T] token ids -> [T, H] final-norm hidden states."""
+    body = model.get_decoder()
+    return body(input_ids=input_ids, use_cache=False).last_hidden_state[0]
+
+def logit_head(model: PreTrainedModel) -> Callable[[torch.Tensor], torch.Tensor]:
+    """Return h [S, H] -> logits [S, V], including Granite's division by config.logits_scaling."""
+    head = model.get_output_embeddings()
+    if not isinstance(head, nn.Linear):
+        raise SlicedLogitsError(f"output embeddings are {type(head).__name__}, not nn.Linear")
+    scale = float(getattr(model.config, "logits_scaling", 1.0))
+    return lambda hidden: head(hidden) / scale
+
+@torch.inference_mode()
+def check_sliced_logits(model: PreTrainedModel, input_ids: torch.Tensor, slice_len: int, atol: float = 1e-4) -> None:
+    """Raise SlicedLogitsError unless the sliced path matches model(input_ids).logits within atol."""
+    full = model(input_ids=input_ids, use_cache=False).logits[0]                 # [T, V]
+    hidden = body_hidden_states(model, input_ids)                                # [T, H]
+    head = logit_head(model)
+    sliced = torch.cat([head(hidden[s : s + slice_len]) for s in range(0, hidden.shape[0], slice_len)])
+    error = (sliced - full).abs().max().item()
+    if error > atol:
+        raise SlicedLogitsError(f"sliced logits differ from forward() by {error:.3g} (atol {atol})")
+```
+
+The pipeline calls `check_sliced_logits` on a 512-token prefix of the KL dataset, with the same `slice_len` as the metrics. At that length the full logits are 0.2 GB. The `atol` of $10^{-4}$ is loose enough for float32 summation-order differences, and far below any real change to the head, such as soft-capping.
 
 ## Tokenization boundary
 
@@ -158,6 +194,7 @@ Joining the first $k$ documents and tokenizing once, with $k$ a multiple of 1000
 
 Tests for this spec are listed in spec 0010 under `tests/models/` and `tests/data/`. None of them downloads anything.
 
+- On the tiny Granite fixture, with `logits_scaling=4`, `check_sliced_logits` passes for several `slice_len` values, including one that does not divide $T$. It raises `SlicedLogitsError` when the test monkeypatches the head's forward to soft-cap its output.
 - `find_quantizable_linears` on the tiny Granite fixture (spec 0010) returns the 12 expected names in `named_modules()` order. It raises `QuantizableModuleError` when `expected_count` is wrong, and when two matched modules are made to share one weight.
 - `sample_calibration` with a character-level encoder and an in-memory list of strings:
   - it skips documents that are too short;

@@ -33,7 +33,7 @@ $$
 \end{aligned}
 $$
 
-Report the mean $\mathrm{KL}_t$, its 99th percentile (rare large disagreements matter for generation), and mean top-1 agreement. Logits over the 100,352-token vocabulary are never cached; both models are resident at once (about 1.4 GB each in float32) and compared chunk by chunk.
+Report the mean $\mathrm{KL}_t$, its 99th percentile (rare large disagreements matter for generation), and mean top-1 agreement. Logits over the 100,352-token vocabulary are never cached; both models are resident at once (about 1.4 GB each in float32) and compared chunk by chunk. Within a chunk, each model's decoder body runs once, and the LM head is applied to a few hundred positions at a time. A full `[2048, 100352]` float32 logit tensor is 0.82 GB, and Granite's `forward` briefly holds two of them while it applies `logits_scaling`, which would not fit next to two models on a 6 GB GPU. The sliced path is mathematically identical to `forward`, and each run verifies this at startup before measuring anything.
 
 ### Metric 2: perplexity
 

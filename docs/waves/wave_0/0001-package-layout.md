@@ -44,7 +44,8 @@ AnyPrecisionLLM/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── loading.py                   # load_model, load_tokenizer
-│   │   └── discovery.py                 # find_quantizable_linears
+│   │   ├── discovery.py                 # find_quantizable_linears
+│   │   └── heads.py                     # body_hidden_states, logit_head, check_sliced_logits
 │   ├── data/
 │   │   ├── __init__.py
 │   │   ├── hub.py                       # load_texts: the only call to datasets.load_dataset
@@ -112,13 +113,13 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 | `anyprec.config` | `QuantizeRunConfig`, `EvaluateRunConfig`, `ModelConfig`, `CalibrationConfig`, `QuantizerConfig`, `RotationConfig`, `EvalConfig`, `OutputConfig`, `load_quantize_config`, `load_evaluate_config` | 0002 |
 | `anyprec.utils` | `canonical_json`, `sha256_key`, `stable_seed`, `seed_everything`, `torch_dtype`, `resolve_device`, `library_versions` | 0002, 0009 |
 | `anyprec.rotation` | `resolve_rotation` | 0002 |
-| `anyprec.models` | `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError` | 0003 |
+| `anyprec.models` | `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError`, `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` | 0003 |
 | `anyprec.data` | `load_texts`, `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError`, `load_eval_tokens`, `iter_chunks` | 0003, 0009 |
 | `anyprec.sensitivity` | `estimate_fisher`, `FisherResult` | 0004 |
 | `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model`, `run_quantization` | 0005, 0009 |
 | `anyprec.artifacts` | `fisher_snapshot`, `quantized_snapshot`, `fisher_key`, `quantized_key`, `ModuleEntry`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats`, `ArtifactStore`, `QuantizedArtifact`, `FisherMeta`, `QuantizedMeta`, `ArtifactNotFoundError`, `ArtifactMismatchError` | 0002, 0006 |
 | `anyprec.inference` | `set_precision`, `snapshot_weights`, `restore_weights`, `PrecisionError` | 0007 |
-| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `Results`, `run_evaluation` | 0008, 0009 |
+| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `ChunkOutputs`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `Results`, `run_evaluation` | 0008, 0009 |
 
 ## Verification
 

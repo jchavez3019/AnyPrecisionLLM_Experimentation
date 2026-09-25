@@ -155,6 +155,12 @@ def run_evaluation(cfg: EvaluateRunConfig, run_dir: Path) -> Results:
         for name, d in cfg.eval.datasets.items()
     }
 
+    # Prove the sliced-head metric path reproduces forward(), then that both instances agree,
+    # before any quantized weight is written (spec 0008).
+
+    probe = eval_tokens[cfg.eval.kl.dataset][None, :512].to(device)               # [1, 512]
+    check_sliced_logits(reference, probe, slice_len=256)
+    check_sliced_logits(quantized, probe, slice_len=256)
     _assert_identical_models(reference, quantized, eval_tokens[cfg.eval.kl.dataset], cfg.eval, device)
     report = bits_report([m.shape for m in modules], _count_params(reference), cfg.quantizer.seed_bits, cfg.quantizer.parent_bits)
 
