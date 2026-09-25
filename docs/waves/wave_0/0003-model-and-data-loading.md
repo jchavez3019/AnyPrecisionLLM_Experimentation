@@ -212,7 +212,7 @@ Joining the first $k$ documents and tokenizing once, with $k$ a multiple of 1000
 
 Tests for this spec are listed in spec 0010 under `tests/models/` and `tests/data/`. None of them downloads anything.
 
-- On the tiny Granite fixture, with `logits_scaling=4`, `check_sliced_logits` passes for `None` and for several `slice_len` values, including one that does not divide $T$. It raises `SlicedLogitsError` when the test monkeypatches the head's forward to soft-cap its output.
+- On the tiny Granite fixture, with `logits_scaling=4`, `check_sliced_logits` passes for `None` and for several `slice_len` values, including one that does not divide $T$. It raises `SlicedLogitsError` when a forward hook soft-caps the model's logits after the head, which body plus head does not reproduce. Patching the head itself would not be detected, since both paths call it. `logit_head` and `body_hidden_states` raise `SlicedLogitsError` for a null `logits_scaling`, a non-linear output embedding, and a missing decoder body.
 - `find_quantizable_linears` on the tiny Granite fixture (spec 0010) returns the 12 expected names in `named_modules()` order. It raises `QuantizableModuleError` when `expected_count` is wrong, and when two matched modules are made to share one weight.
 - `sample_calibration` with a character-level encoder and an in-memory list of strings:
   - it skips documents that are too short;

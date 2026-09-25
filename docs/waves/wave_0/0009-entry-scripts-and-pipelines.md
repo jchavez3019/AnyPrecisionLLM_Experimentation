@@ -78,7 +78,7 @@ def run_quantization(cfg: QuantizeRunConfig, run_dir: Path) -> QuantizationOutco
 
     model = load_model(cfg.model, torch_dtype(cfg.model.dtype), device)
     targets = find_quantizable_linears(model, cfg.model.quantizable_modules)
-    modules = [ModuleEntry(name=n, shape=tuple(l.weight.shape)) for n, l in targets.items()]
+    modules = module_entries({n: l.weight for n, l in targets.items()})
 
     if store.has_quantized(q_key):
         store.load_quantized(q_key, q_snapshot, modules)           # validates, then discards
@@ -142,7 +142,7 @@ def run_evaluation(cfg: EvaluateRunConfig, run_dir: Path) -> Results:
     reference = load_model(cfg.model, dtype, device).eval()
     quantized = load_model(cfg.model, dtype, device).eval()
     targets = find_quantizable_linears(quantized, cfg.model.quantizable_modules)
-    modules = [ModuleEntry(name=n, shape=tuple(l.weight.shape)) for n, l in targets.items()]
+    modules = module_entries({n: l.weight for n, l in targets.items()})
 
     # Load every artifact up front, so a missing one fails before hours of evaluation.
 

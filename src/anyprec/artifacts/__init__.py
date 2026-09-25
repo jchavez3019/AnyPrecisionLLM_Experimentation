@@ -13,6 +13,7 @@ from anyprec.artifacts.manifest import (
     FisherManifest,
     ModuleEntry,
     QuantizedManifest,
+    module_entries,
 )
 from anyprec.artifacts.store import (
     ArtifactMismatchError,
@@ -38,6 +39,7 @@ __all__ = [
     "QuantizedMeta",
     "fisher_key",
     "fisher_snapshot",
+    "module_entries",
     "quantized_key",
     "quantized_snapshot",
 ]

@@ -14,6 +14,7 @@ from anyprec.config.schemas import (
     QuantizerMode,
     QuantizeRunConfig,
 )
+from anyprec.data.calibration import Encoder
 from tests import factories
 
 # Derandomized hypothesis runs make every failure reproducible from the test name alone.
@@ -37,6 +38,12 @@ def tiny_granite_config() -> GraniteMoeHybridConfig:
 def tiny_model() -> GraniteMoeHybridForCausalLM:
     """A fresh float32 tiny Granite model; function-scoped so no test sees another's edits."""
     return factories.tiny_model()
+
+
+@pytest.fixture(scope="session")
+def char_encoder() -> Encoder:
+    """The byte-level encoder, a stand-in for a tokenizer over the tiny model's 256 ids."""
+    return factories.char_encode
 
 
 @pytest.fixture(scope="session")

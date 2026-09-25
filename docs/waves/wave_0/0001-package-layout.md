@@ -117,7 +117,7 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 | `anyprec.data` | `load_texts`, `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError`, `load_eval_tokens`, `iter_chunks` | 0003, 0009 |
 | `anyprec.sensitivity` | `estimate_fisher`, `FisherResult` | 0004 |
 | `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model`, `run_quantization` | 0005, 0009 |
-| `anyprec.artifacts` | `FISHER_SCHEMA_VERSION`, `QUANTIZED_SCHEMA_VERSION`, `fisher_snapshot`, `quantized_snapshot`, `fisher_key`, `quantized_key`, `ModuleEntry`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats`, `ArtifactStore`, `QuantizedArtifact`, `FisherMeta`, `QuantizedMeta`, `ArtifactNotFoundError`, `ArtifactMismatchError` | 0002, 0006 |
+| `anyprec.artifacts` | `FISHER_SCHEMA_VERSION`, `QUANTIZED_SCHEMA_VERSION`, `fisher_snapshot`, `quantized_snapshot`, `fisher_key`, `quantized_key`, `ModuleEntry`, `module_entries`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats`, `ArtifactStore`, `QuantizedArtifact`, `FisherMeta`, `QuantizedMeta`, `ArtifactNotFoundError`, `ArtifactMismatchError` | 0002, 0006 |
 | `anyprec.inference` | `set_precision`, `snapshot_weights`, `restore_weights`, `PrecisionError` | 0007 |
 | `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `ChunkOutputs`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `Results`, `run_evaluation` | 0008, 0009 |
 

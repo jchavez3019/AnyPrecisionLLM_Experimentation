@@ -14,7 +14,7 @@ from torch import nn
 from transformers import GraniteMoeHybridConfig, GraniteMoeHybridForCausalLM
 
 from anyprec.artifacts.keys import fisher_key, fisher_snapshot, quantized_snapshot
-from anyprec.artifacts.manifest import ModuleEntry
+from anyprec.artifacts.manifest import module_entries
 from anyprec.artifacts.store import ArtifactStore, FisherMeta, QuantizedArtifact, QuantizedMeta
 from anyprec.config.schemas import (
     CalibrationConfig,
@@ -68,6 +68,26 @@ def tiny_model(seed: int = 0) -> GraniteMoeHybridForCausalLM:
     """
     torch.default_generator.manual_seed(seed)
     return GraniteMoeHybridForCausalLM(tiny_granite_config()).eval()
+
+
+def char_encode(text: str) -> list[int]:
+    """Encode each UTF-8 byte as one token id in ``[0, 256)``, the tiny model's vocabulary.
+
+    :param text: Raw text.
+    :return: One token id per byte.
+    """
+    return list(text.encode("utf-8"))
+
+
+def corpus(num_documents: int = 12) -> list[str]:
+    """Deterministic documents whose byte lengths cycle through 7, 23, 39, 55, 71, and 87.
+
+    A third of them are shorter than the 32-token calibration length, so sampling must skip them.
+
+    :param num_documents: Number of documents.
+    :return: The documents.
+    """
+    return [f"doc{i:03d} " + "abcdefgh" * (i % 6) * 2 for i in range(num_documents)]
 
 
 def target_weights(model: nn.Module) -> dict[str, torch.Tensor]:
@@ -155,8 +175,7 @@ def stored_tiny_artifact(
     store.save_quantized(
         key, snapshot, quantization, QuantizedMeta.from_config(config, torch.device("cpu"))
     )
-    modules = [ModuleEntry(name=n, shape=(w.shape[0], w.shape[1])) for n, w in weights.items()]
-    return store.load_quantized(key, snapshot, modules)
+    return store.load_quantized(key, snapshot, module_entries(weights))
 
 
 def model_config() -> ModelConfig:

@@ -11,7 +11,7 @@ from safetensors.torch import save
 
 import anyprec.artifacts.store as store_module
 from anyprec.artifacts.keys import fisher_key, quantized_snapshot
-from anyprec.artifacts.manifest import ModuleEntry
+from anyprec.artifacts.manifest import ModuleEntry, module_entries
 from anyprec.artifacts.store import (
     ArtifactMismatchError,
     ArtifactNotFoundError,
@@ -42,9 +42,7 @@ class _Saved:
         f_key = fisher_key(self.config.model, self.config.calibration, self.config.rotation)
         self.snapshot: Snapshot = quantized_snapshot(f_key, self.config.quantizer)
         self.key: str = sha256_key(self.snapshot)
-        self.modules: list[ModuleEntry] = [
-            ModuleEntry(name=n, shape=(w.shape[0], w.shape[1])) for n, w in weights.items()
-        ]
+        self.modules: list[ModuleEntry] = module_entries(weights)
         self.store = ArtifactStore(self.config.output.cache_dir)
         self.meta = QuantizedMeta.from_config(self.config, torch.device("cpu"))
         self.directory: Path = self.store.save_quantized(
@@ -111,6 +109,20 @@ def test_quantized_artifact_round_trips_bitwise_in_its_mode_layout(saved: _Saved
             "indices_3.safetensors",
             "indices_4.safetensors",
         ]
+
+
+def test_has_reports_only_parsable_manifests_of_the_matching_kind(saved: _Saved) -> None:
+    """
+    Given: a saved quantized artifact.
+    When: existence is queried as quantized, as Fisher, and again after its kind is edited.
+    Then: only the first query is True, so the pipelines never reuse an unreadable artifact.
+    """
+    assert saved.store.has_quantized(saved.key)
+    assert not saved.store.has_fisher(saved.key)
+
+    _edit_manifest(saved.directory, lambda data: data.__setitem__("kind", "fisher"))
+
+    assert not saved.store.has_quantized(saved.key)
 
 
 def test_artifact_without_stats_loads_with_stats_none(saved: _Saved) -> None:

@@ -29,6 +29,7 @@ from anyprec.artifacts.manifest import (
     ManifestBase,
     ModuleEntry,
     QuantizedManifest,
+    module_entries,
 )
 from anyprec.config.schemas import QuantizerMode, QuantizeRunConfig
 from anyprec.quantization.model import ModelQuantization
@@ -218,7 +219,7 @@ class ArtifactStore:
             key=key,
             model_id=meta.model_id,
             revision=meta.revision,
-            modules=_module_entries(result.diagonals),
+            modules=module_entries(result.diagonals),
             config_snapshot=snapshot,
             device=meta.device,
             versions=library_versions(),
@@ -301,7 +302,7 @@ class ArtifactStore:
             key=key,
             model_id=meta.model_id,
             revision=meta.revision,
-            modules=_module_entries(parents),
+            modules=module_entries(parents),
             config_snapshot=snapshot,
             device=meta.device,
             versions=library_versions(),
@@ -380,11 +381,6 @@ def _stored_bits(mode: QuantizerMode, seed_bits: int, parent_bits: int) -> list[
 def _indices_file(mode: QuantizerMode, bits: int) -> str:
     """File name of the indices at one stored bit-width (ADR 0005 layout)."""
     return "indices.safetensors" if mode == "incremental" else f"indices_{bits}.safetensors"
-
-
-def _module_entries(tensors: Mapping[str, torch.Tensor]) -> list[ModuleEntry]:
-    """Record each module's name and ``[m, n]`` shape, in the mapping's order."""
-    return [ModuleEntry(name=name, shape=(t.shape[0], t.shape[1])) for name, t in tensors.items()]
 
 
 def _require_key_matches(key: str, snapshot: dict[str, JsonValue]) -> None:

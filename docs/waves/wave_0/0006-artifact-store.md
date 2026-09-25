@@ -13,7 +13,7 @@ The store is split into the manifest schema and the read/write functions. Neithe
 | File | Contents |
 | --- | --- |
 | `artifacts/keys.py` | Snapshots and keys (spec 0002) |
-| `artifacts/manifest.py` | `ModuleEntry`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats` |
+| `artifacts/manifest.py` | `ModuleEntry`, `module_entries`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats` |
 | `artifacts/store.py` | `ArtifactStore`, `QuantizedArtifact`, errors, and the atomic writer |
 
 ## On-disk layout

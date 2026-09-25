@@ -1,8 +1,10 @@
 """Manifest and statistics schemas of cached artifacts (ADR 0005, spec 0006)."""
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Literal
 
+import torch
 from pydantic import PositiveInt
 
 from anyprec.config.schemas import FrozenModel, QuantizerMode
@@ -18,6 +20,17 @@ class ModuleEntry(FrozenModel):
 
     name: str
     shape: tuple[PositiveInt, PositiveInt]
+
+
+def module_entries(weights: Mapping[str, torch.Tensor]) -> list[ModuleEntry]:
+    """Record each module's name and ``[m, n]`` weight shape, in the mapping's order.
+
+    Writers and readers build the list the same way, so a lookup compares like with like.
+
+    :param weights: Module name to weight matrix, in discovery order.
+    :return: One entry per module.
+    """
+    return [ModuleEntry(name=name, shape=(w.shape[0], w.shape[1])) for name, w in weights.items()]
 
 
 class ManifestBase(FrozenModel):
