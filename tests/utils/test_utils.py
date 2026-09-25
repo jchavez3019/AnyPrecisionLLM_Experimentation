@@ -2,10 +2,12 @@
 
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError
 
 import pytest
 import torch
 
+import anyprec.utils.versions as versions_module
 from anyprec.utils.devices import resolve_device
 from anyprec.utils.dtypes import torch_dtype
 from anyprec.utils.hashing import canonical_json, sha256_key, stable_seed
@@ -120,3 +122,33 @@ def test_library_versions_reports_packages_and_cuda_runtime() -> None:
     assert set(versions) == {"anyprec", "torch", "transformers", "datasets", "cuda"}
     assert versions["torch"].startswith("2.")
     assert all(value for value in versions.values())
+
+
+def test_library_versions_marks_missing_package_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Given: package metadata in which "datasets" is not installed.
+    When: library versions are collected.
+    Then: "datasets" is reported as "not installed", and the other packages keep their versions.
+    """
+
+    def fake_version(package: str) -> str:
+        """Report every package as version 1.0, except datasets, which is missing.
+
+        :param package: Distribution name.
+        :return: A fixed version string.
+        :raises PackageNotFoundError: For ``datasets``.
+        """
+        if package == "datasets":
+            raise PackageNotFoundError(package)
+        return "1.0"
+
+    # Patch the name library_versions resolves, so no real distribution metadata is read.
+
+    monkeypatch.setattr(versions_module, "version", fake_version)
+
+    versions = library_versions()
+
+    assert versions["datasets"] == "not installed"
+    assert versions["torch"] == "1.0"

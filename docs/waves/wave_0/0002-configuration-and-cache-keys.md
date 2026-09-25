@@ -311,5 +311,5 @@ Tests for this spec are listed in spec 0010 under `tests/config/`, `tests/utils/
 - Every YAML file composes with Hydra's `compose` API (no `@hydra.main`) and validates into its run config.
 - Invalid inputs raise `ValidationError`: an unknown key, `seed_bits > parent_bits`, `parent_bits = 9`, an eval bit outside the quantizer's range, `kl.dataset` missing from `datasets`, or `lm_head_chunk_tokens` of 0, 300, or -256. `null` and 1, 256, and 2048 are accepted.
 - `rotation=hadamard` validates as configuration, and `resolve_rotation` raises `NotImplementedError` for it.
-- Keys are stable, insensitive to dictionary key order, and sensitive to exactly the fields in the snapshots. A hypothesis test perturbs one field at a time and asserts which keys change.
+- Keys are stable, insensitive to dictionary key order, and sensitive to exactly the fields in the snapshots. A parametrized table perturbs one field at a time, covering model, calibration, and quantizer fields plus one field outside every snapshot, and asserts which keys change.
 - `stable_seed` is deterministic across processes (a pinned expected value), and different names give different seeds.

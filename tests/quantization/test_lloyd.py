@@ -94,6 +94,8 @@ def test_lloyd_is_no_better_than_exhaustive_optimum(
     assert bool((result.borders[:, -1] == n).all())
     assert bool((result.borders[:, 1:] >= result.borders[:, :-1]).all())
     for r in range(rows.w_sorted.shape[0]):
+        # Lloyd is a local method, so it can only match or exceed the exhaustive optimum.
+
         w, f = oracles.floats(rows.w_sorted[r]), oracles.floats(rows.f_sorted[r])
         achieved = oracles.partition_cost(w, f, oracles.ints(result.borders[r]))
         optimum = oracles.optimal_partition_cost(w, f, num_centroids)

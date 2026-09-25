@@ -110,7 +110,7 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 
 | Subpackage | Public names | Spec |
 | --- | --- | --- |
-| `anyprec.config` | `QuantizeRunConfig`, `EvaluateRunConfig`, `ModelConfig`, `CalibrationConfig`, `QuantizerConfig`, `RotationConfig`, `EvalConfig`, `OutputConfig`, `load_quantize_config`, `load_evaluate_config` | 0002 |
+| `anyprec.config` | `QuantizeRunConfig`, `EvaluateRunConfig`, `ModelConfig`, `QuantizableModules`, `CalibrationConfig`, `QuantizerConfig`, `RotationConfig`, `RotationNone`, `RotationHadamard`, `EvalConfig`, `EvalDatasetConfig`, `KLConfig`, `OutputConfig`, `load_quantize_config`, `load_evaluate_config` | 0002 |
 | `anyprec.utils` | `JsonValue`, `DTypeName`, `canonical_json`, `sha256_key`, `stable_seed`, `seed_everything`, `torch_dtype`, `resolve_device`, `library_versions` | 0002, 0009 |
 | `anyprec.rotation` | `resolve_rotation` | 0002 |
 | `anyprec.models` | `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError`, `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` | 0003 |

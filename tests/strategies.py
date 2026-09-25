@@ -31,6 +31,10 @@ def weighted_rows(
     fisher_rows: list[list[float]] = []
     for _ in range(num_rows):
         weight_rows.append(draw(st.lists(grid, min_size=n, max_size=n)))
+
+        # Each Fisher style targets one hard case: the unweighted fallback, float64 prefix-sum
+        # cancellation next to one huge sensitivity, or a mix that includes exact zeros.
+
         style = draw(st.sampled_from(["mixed", "all_zero", "dominant"]))
         if style == "all_zero":
             fisher_rows.append([0.0] * n)

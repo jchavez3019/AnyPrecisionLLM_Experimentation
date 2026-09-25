@@ -37,6 +37,7 @@ tests/
 ├── factories.py                     # builders of the pydantic configs and the tiny model
 ├── strategies.py                    # hypothesis strategies for rows and codebooks
 ├── test_layering.py                 # spec 0001
+├── test_vertical_slice.py           # tiny model: quantize, store round trip, set_precision (wave index, step 4)
 ├── config/
 │   ├── test_schemas.py              # spec 0002
 │   └── test_hydra_compose.py        # spec 0002: every YAML composes and validates

@@ -103,7 +103,8 @@ def run_quantization(cfg: QuantizeRunConfig, run_dir: Path) -> QuantizationOutco
 
     if device.type == "cuda":
         torch.cuda.empty_cache()
-    quantization = quantize_model(targets, fisher, cfg.quantizer, device, progress=_tqdm_names(len(targets)))
+    weights = {name: linear.weight for name, linear in targets.items()}   # [m, n] each; rotated here once ADR 0006 lands
+    quantization = quantize_model(weights, fisher, cfg.quantizer, device, progress=_tqdm_names(len(targets)))
 
     # Phase 3: persist atomically, and record a human-readable summary in the Hydra run directory.
 
@@ -114,7 +115,7 @@ def run_quantization(cfg: QuantizeRunConfig, run_dir: Path) -> QuantizationOutco
 
 `quantize_summary.json` lists both keys, the directories, the timings, and the per-bit median relative error across modules. It is a convenience for people reading the run; nothing reads it back.
 
-The model is loaded in `model.dtype` (bfloat16), which is the dtype the Fisher is defined on (ADR 0003). `quantize_model` casts each weight to float32 on its own.
+The model is loaded in `model.dtype` (bfloat16), which is the dtype the Fisher is defined on (ADR 0003). `quantize_model` casts each weight to float32 on its own. The pipeline is the one place that decides which tensors are clustered, so ADR 0006's rotation becomes a change to the `weights` mapping above, not to `quantize_model`.
 
 ## Evaluation pipeline
 

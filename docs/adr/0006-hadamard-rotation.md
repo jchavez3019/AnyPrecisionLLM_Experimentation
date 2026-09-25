@@ -135,12 +135,14 @@ def hook(p, name=name, R=rotations[name]):
     fisher[name].add_((p.grad.float() @ R).square())          # [m, n] @ [n, n] -> [m, n]
     p.grad = None
 
-# Quantization: cluster the rotated weights with the unchanged ADR 0003 pipeline.
-W_rot = W.float() @ R                                         # [m, n]
-idx, luts = quantize_layer(W_rot, fisher[name], seed_bits, parent_bits, stable_seed(seed, name), row_chunk)
+# Quantization: cluster the rotated weights with the unchanged ADR 0003 pipeline. The pipeline
+# builds the weights mapping, so only the mapping changes; quantize_model takes tensors.
+weights = {name: linear.weight.float() @ rotations[name] for name, linear in targets.items()}  # [m, n] each
+quantization = quantize_model(weights, fisher, cfg.quantizer, device)
 
 # Simulated inference: dequantize in the rotated basis, then rotate back.
-W_hat = luts[bits][name].float().gather(1, idx.long() >> shift) @ R.T   # [m, n]
+layer = quantization.layers[name]
+W_hat = layer.luts[bits].float().gather(1, layer.indices[parent_bits].long() >> shift) @ R.T   # [m, n]
 module.weight.copy_(W_hat.to(module.weight.dtype))
 ```
 

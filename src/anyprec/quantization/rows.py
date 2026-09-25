@@ -39,9 +39,11 @@ def prepare_rows(weight: torch.Tensor, fisher: torch.Tensor) -> PreparedRows:
     f = torch.where(f.sum(dim=1, keepdim=True) > 0, f, torch.ones_like(f))
 
     # Sort each row once; every later step works on contiguous segments of this order.
+    # A stable sort keeps tied weights (common in bfloat16) in column order, so which tied
+    # column lands on which side of a split does not depend on the sort implementation.
     # [R, n] -> [R, n] permutation, then sorted values and their sensitivities.
 
-    order: torch.Tensor = weight.argsort(dim=1)
+    order: torch.Tensor = weight.argsort(dim=1, stable=True)
     w_sorted: torch.Tensor = weight.gather(1, order).double()
     f_sorted: torch.Tensor = f.gather(1, order)
 

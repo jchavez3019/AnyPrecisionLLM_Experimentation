@@ -21,7 +21,9 @@ class LayerQuantization:
         only ``parent_bits``; standalone mode stores every bit-width.
     :param luts: Bit-width to float16 ``[m, 2**bits]`` codebooks on the CPU, one per row.
     :param relative_error: Bit-width to ``J / sum(f w^2)`` over the whole matrix, computed with
-        the float16 codebooks that simulated inference uses; 0 for an all-zero matrix.
+        the float16 codebooks that simulated inference uses; 0 for an all-zero matrix. The
+        conditioned ``f`` is used, as in notebook 02, so a row with no Fisher signal (weighted
+        by 1) can dominate a module whose other sensitivities are tiny.
     :param lloyd_iterations: Largest Lloyd iteration count over all chunks and bit-widths.
     """
 
@@ -47,6 +49,11 @@ def _fit_codebooks(
     device = rows.w_sorted.device
 
     def fit(bits: int) -> tuple[Codebook, int]:
+        """Run one Lloyd fit from a fresh generator in the chunk's seed state.
+
+        :param bits: Bit-width of the codebook.
+        :return: ``(centroids, borders)`` and the Lloyd iteration count.
+        """
         generator = torch.Generator(device=device).manual_seed(chunk_seed)
         result = weighted_lloyd(rows, 2**bits, generator, cfg.lloyd_max_iter, cfg.empty_eps)
         return (result.centroids, result.borders), result.iterations

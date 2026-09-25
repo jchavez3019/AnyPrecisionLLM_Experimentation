@@ -58,6 +58,8 @@ def test_split_all_segments_matches_brute_force_optimum(
     for r in range(borders.shape[0]):
         w, f = oracles.floats(rows.w_sorted[r]), oracles.floats(rows.f_sorted[r])
         for k, (start, end) in enumerate(itertools.pairwise(oracles.ints(borders[r]))):
+            # Child 2k starts at the parent's start, so the chosen split is child 2k + 1's start.
+
             split = int(child_borders[r, 2 * k + 1])
             if end - start < 2:
                 assert split == start
@@ -88,9 +90,15 @@ def test_split_all_segments_never_increases_cost_and_keeps_indices_nested(
     parent_ids = segment_ids(borders, n)
     child_ids = segment_ids(child_borders, n)
     assert torch.equal(child_ids >> 1, parent_ids)
+
+    # Children use their own means, which can only lower each parent segment's cost.
+
     before = oracles.reconstruction_cost(rows.w_sorted, rows.f_sorted, centroids, parent_ids)
     after = oracles.reconstruction_cost(rows.w_sorted, rows.f_sorted, child_centroids, child_ids)
     assert after <= before * (1 + 1e-9) + 1e-12
+
+    # An unsplittable segment leaves an empty left child, which must inherit the parent centroid.
+
     mass, _, _ = segment_stats(rows, child_borders[:, :-1], child_borders[:, 1:], EMPTY_EPS)
     empty = mass <= EMPTY_EPS
     assert torch.equal(child_centroids[empty], centroids.repeat_interleave(2, dim=1)[empty])

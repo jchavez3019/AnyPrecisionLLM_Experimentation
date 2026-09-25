@@ -261,25 +261,24 @@ def split_all_segments(P, borders, C):                     # borders: [R, K+1], 
 **Per-layer driver:**
 
 ```python
-def quantize_layer(W, F, seed_bits, parent_bits, layer_seed, row_chunk):   # incremental mode
-    for c, rows in enumerate(chunks(range(W.shape[0]), row_chunk)):        # bounds peak memory
-        order, w_s, f_s, P = prepare_rows(W[rows].float(), F[rows])
+def quantize_layer(W, F, cfg, layer_seed) -> LayerQuantization:          # incremental mode shown
+    for c, rows in enumerate(chunks(range(W.shape[0]), cfg.row_chunk)):    # bounds peak memory
+        P = prepare_rows(W[rows].float(), F[rows])
         generator = torch.Generator(device=W.device).manual_seed(stable_seed(layer_seed, f"chunk{c}"))
-        C, borders = weighted_lloyd(w_s, f_s, P, 2 ** seed_bits, generator)
-        luts = {seed_bits: C}
-        for b in range(seed_bits, parent_bits):
-            C, borders = split_all_segments(P, borders, C)
+        C, borders = weighted_lloyd(P, 2 ** cfg.seed_bits, generator, cfg.lloyd_max_iter, cfg.empty_eps)
+        luts = {cfg.seed_bits: C}
+        for b in range(cfg.seed_bits, cfg.parent_bits):
+            C, borders = split_all_segments(P, borders, C, cfg.empty_eps)
             luts[b + 1] = C                                # [R, 2**(b+1)]
 
         # Segment id of each sorted position at the parent bit-width, then undo the sort.
-        idx_sorted = segment_ids_from_borders(borders, n)  # [R, n], values in [0, 2**parent_bits)
-        idx = torch.empty_like(idx_sorted).scatter_(1, order, idx_sorted)
+        idx_sorted = segment_ids(borders, n)               # [R, n], values in [0, 2**parent_bits)
+        idx = torch.empty_like(idx_sorted).scatter_(1, P.order, idx_sorted)
         store(rows, idx.to(torch.uint8), {b: lut.to(torch.float16) for b, lut in luts.items()})
 
-def quantize_model(targets, fisher, cfg):
-    for name, linear in targets.items():
-        quantize_layer(linear.weight, fisher[name], cfg.seed_bits, cfg.parent_bits,
-                       stable_seed(cfg.seed, name), cfg.row_chunk)
+def quantize_model(weights, fisher, cfg) -> ModelQuantization:  # weights: name -> [m, n] tensor
+    for name, W in weights.items():
+        quantize_layer(W, fisher[name], cfg, stable_seed(cfg.seed, name))
 ```
 
 `stable_seed(seed, name)` is the first 8 bytes of `sha256(f"{seed}:{name}")`, masked to 63 bits. In standalone mode, each bit-width's Lloyd fit gets its own fresh generator from the same chunk seed.

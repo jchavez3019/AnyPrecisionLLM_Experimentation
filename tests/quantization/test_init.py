@@ -30,6 +30,8 @@ def test_kmeanspp_returns_sorted_row_values_distinct_when_enough_sensitive_value
     assert centroids.shape == (weight.shape[0], num_centroids)
     assert bool((centroids[:, 1:] >= centroids[:, :-1]).all())
     for r in range(weight.shape[0]):
+        # Zero-sensitivity values have zero sampling weight, so only the others count as drawable.
+
         row_values = set(oracles.floats(rows.w_sorted[r]))
         drawable = set(oracles.floats(rows.w_sorted[r][rows.f_sorted[r] > 0]))
         chosen = oracles.floats(centroids[r])

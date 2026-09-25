@@ -65,11 +65,13 @@ The order follows the dependency graph, so each step can be tested before the ne
 1. Package skeleton and utilities: spec 0001, and `utils/` from spec 0002.
 2. Configuration: schemas, YAML groups, cache keys, and rotation resolution (spec 0002).
 3. Quantization kernels (spec 0005). These have no model dependency, so they can be property-tested first.
-4. Model and data loading (spec 0003), then Fisher estimation (spec 0004).
-5. Artifact store (spec 0006), then simulated inference (spec 0007).
-6. Evaluation metrics (spec 0008).
+4. A thin end-to-end path on the tiny model: the artifact store (spec 0006) and `set_precision` (spec 0007), exercised by `tests/test_vertical_slice.py`. The test takes a random Fisher, runs `quantize_model`, saves and reloads the artifact through `ArtifactStore`, and calls `set_precision` at every bit-width, checking each module's weight against `LUT[idx]`. This fixes the hand-offs between the kernels, the on-disk layout, and inference before the heavier pieces arrive.
+5. Model and data loading (spec 0003), then Fisher estimation (spec 0004), plugged into the path of step 4 in place of the random Fisher.
+6. Evaluation metrics (spec 0008), which extend the path to a `results.json` on the tiny model.
 7. Pipelines and entry scripts (spec 0009).
 8. Integration tests and the acceptance run (spec 0011).
+
+Steps 4 to 6 grow one working path rather than finishing each spec in isolation, so every step ends with the tiny model running from quantization to its current end point.
 
 ## Definition of done
 

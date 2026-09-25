@@ -2,10 +2,12 @@
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
+from omegaconf import DictConfig, OmegaConf
 
 from anyprec.config.loading import load_evaluate_config, load_quantize_config
 from anyprec.config.schemas import RotationHadamard, RotationNone
@@ -64,3 +66,15 @@ def test_command_line_overrides_reach_the_validated_config() -> None:
     assert isinstance(config.rotation, RotationHadamard)
     assert config.quantizer.mode == "standalone"
     assert config.eval.lm_head_chunk_tokens is None
+
+
+def test_loading_rejects_a_config_that_is_not_a_mapping() -> None:
+    """
+    Given: an OmegaConf list where a composed mapping is expected.
+    When: it is loaded as a quantization run config.
+    Then: TypeError is raised before pydantic sees it.
+    """
+    not_a_mapping = cast("DictConfig", OmegaConf.create([1, 2]))
+
+    with pytest.raises(TypeError, match="must be a mapping"):
+        load_quantize_config(not_a_mapping)

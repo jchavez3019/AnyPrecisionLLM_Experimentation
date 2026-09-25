@@ -140,6 +140,7 @@ def test_run_configs_are_frozen(tmp_path: Path) -> None:
     Then: pydantic refuses the mutation.
     """
     config = factories.quantize_run_config(tmp_path)
+    field = "seed"
 
     with pytest.raises(ValidationError):
-        config.seed = 1  # pyright: ignore[reportAttributeAccessIssue]
+        setattr(config, field, 1)
