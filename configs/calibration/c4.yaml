@@ -1,0 +1,7 @@
+path: allenai/c4
+data_files: {train: en/c4-train.00000-of-01024.json.gz}
+split: train
+text_field: text
+num_sequences: 100
+seq_len: 512
+seed: 0

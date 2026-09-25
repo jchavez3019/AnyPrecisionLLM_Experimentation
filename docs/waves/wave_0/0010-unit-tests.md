@@ -34,6 +34,7 @@ The tree mirrors `src/anyprec`, so each spec's verification list maps onto one d
 ```
 tests/
 ├── conftest.py                      # shared fixtures, hypothesis profile
+├── factories.py                     # builders of the pydantic configs and the tiny model
 ├── strategies.py                    # hypothesis strategies for rows and codebooks
 ├── test_layering.py                 # spec 0001
 ├── config/
@@ -52,6 +53,7 @@ tests/
 ├── sensitivity/
 │   └── test_fisher.py               # spec 0004
 ├── quantization/
+│   ├── oracles.py                   # brute-force float64 references for the kernel tests
 │   ├── test_rows.py                 # spec 0005
 │   ├── test_init.py
 │   ├── test_lloyd.py
@@ -107,7 +109,7 @@ The k-means kernels have exact mathematical properties (ADR 0003, Section 4), an
 
 ```python
 @st.composite
-def weighted_rows(draw, max_rows: int = 4, max_n: int = 48) -> tuple[Tensor, Tensor]:
+def weighted_rows(draw, max_rows: int = 4, min_n: int = 2, max_n: int = 48) -> tuple[Tensor, Tensor]:
     """Draw (weight [R, n], fisher [R, n]) float32 tensors, including ties, zeros, and all-zero Fisher rows."""
 ```
 
@@ -126,6 +128,8 @@ The strategy mixes in the hard cases on purpose: repeated weight values, exact z
 | The incremental seed equals the standalone fit at $b_0$ | `test_layer.py` | Bitwise equality of LUTs and indices |
 
 Hypothesis settings: `max_examples=200` for the pure kernels, and 25 for `quantize_layer`. Floating-point comparisons use `torch.testing.assert_close` in float64 with `rtol=1e-9`, except where float16 LUT rounding is involved, which uses the float16 tolerance.
+
+Segment statistics are the exception to a relative tolerance. Each one is a difference of two prefix sums, so its absolute error scales with the row's totals, not with the segment itself. With a dominant sensitivity of $10^6$ beside values of $10^{-3}$, a small segment's mean carries a relative error near $10^{-7}$, which is still far below float16 precision. The `segment_stats` test therefore uses a budget of $10^{-12}$ times each row total ($\sum f$, $\sum f|w|$, $\sum f w^2$), propagated through $\text{mean} = S/M$ and $\text{cost} = Q - S^2/M$.
 
 ## Layering test
 

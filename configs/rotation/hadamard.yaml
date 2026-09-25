@@ -1,0 +1,4 @@
+kind: hadamard
+axis: in_features          # rotate along each row, i.e. the dimension sharing a codebook
+randomized_signs: true     # required for the incoherence guarantee (ADR 0006)
+seed: 0                    # seeds the per-module sign vectors

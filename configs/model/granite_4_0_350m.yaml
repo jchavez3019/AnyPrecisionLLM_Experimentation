@@ -1,0 +1,8 @@
+model_id: ibm-granite/granite-4.0-350m
+revision: bd8a1497065c0d6ba1ef19af6b0d2b14bacf71c2   # Hub commit of 2025-10-23; part of the Fisher key
+dtype: bfloat16           # dtype used for Fisher estimation
+eval_dtype: float32       # dtype used for simulated inference and evaluation (ADR 0005)
+quantizable_modules:
+  # Regular expression matched against fully-qualified module names from named_modules().
+  pattern: '^model\.layers\.\d+\.(self_attn\.(q|k|v|o)_proj|shared_mlp\.(input|output)_linear)$'
+  expected_count: 168     # 28 layers x 6 linears; a mismatch is a hard error

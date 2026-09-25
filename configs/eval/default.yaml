@@ -1,0 +1,11 @@
+chunk_len: 2048
+max_chunks: null           # cap chunks per dataset for smoke runs; null = all
+lm_head_chunk_tokens: 256  # positions per LM-head slice (a power of two); null = all positions at once
+datasets:
+  wikitext2: {path: Salesforce/wikitext, name: wikitext-2-raw-v1, split: test, text_field: text, joiner: "\n\n"}
+  c4: {path: allenai/c4, data_files: {validation: en/c4-validation.00000-of-00008.json.gz},
+       split: validation, text_field: text, joiner: " ", max_tokens: 524288}
+kl:
+  dataset: wikitext2
+  quantile: 0.99
+bits: [3, 4, 5, 6, 7, 8]

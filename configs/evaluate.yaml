@@ -1,0 +1,23 @@
+# Primary config for evaluation/evaluate_any_precision.py (ADR 0002, ADR 0004, spec 0002).
+# The model, calibration, quantizer, and rotation groups recompute the artifact keys to evaluate.
+defaults:
+  - model: granite_4_0_350m
+  - calibration: c4
+  - quantizer: kmeans_iu
+  - rotation: none
+  - eval: default
+  - _self_
+
+seed: 0
+device: cuda
+modes: [incremental, standalone]   # each artifact must already exist
+
+output:
+  base_dir: outputs
+  cache_dir: ${output.base_dir}/cache
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${output.base_dir}/evaluate/${now:%Y-%m-%d}/${now:%H-%M-%S}

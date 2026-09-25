@@ -298,7 +298,7 @@ These are small helpers in `anyprec/utils/`. They are listed here because every 
 
 | Function | Signature | Behaviour |
 | --- | --- | --- |
-| `seed_everything` | `(seed: int) -> None` | Seeds `random`, `numpy.random`, and `torch.manual_seed` (all devices) |
+| `seed_everything` | `(seed: int) -> None` | Seeds `random`, `numpy.random`, the default CPU generator, and every CUDA device |
 | `stable_seed` | `(seed: int, name: str) -> int` | First 8 bytes of `sha256(f"{seed}:{name}")` as an unsigned int, masked to 63 bits so `torch.Generator.manual_seed` accepts it |
 | `torch_dtype` | `(name: DTypeName) -> torch.dtype` | A lookup table; unknown names are impossible after validation |
 | `resolve_device` | `(name: str) -> torch.device` | Parses `cfg.device`; requesting CUDA without CUDA raises, rather than falling back to the CPU (spec 0009) |

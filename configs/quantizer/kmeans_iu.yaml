@@ -1,0 +1,7 @@
+mode: incremental          # or standalone (ADR 0003, Section 5)
+seed_bits: 3
+parent_bits: 8
+seed: 0                    # k-means++ seed, expanded per module and per row chunk (ADR 0003, Section 3)
+lloyd_max_iter: 50
+empty_eps: 1.0e-12
+row_chunk: 1024            # rows per kernel call; bounds GPU memory

@@ -1,0 +1,20 @@
+# Primary config for quantization/quantize_any_precision.py (ADR 0002, spec 0002).
+defaults:
+  - model: granite_4_0_350m
+  - calibration: c4
+  - quantizer: kmeans_iu
+  - rotation: none
+  - _self_
+
+seed: 0                   # seeds random, NumPy, and PyTorch at the start of the run
+device: cuda              # "cuda", "cuda:0", or "cpu"; CUDA without a GPU is an error
+
+output:
+  base_dir: outputs
+  cache_dir: ${output.base_dir}/cache
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${output.base_dir}/quantize/${now:%Y-%m-%d}/${now:%H-%M-%S}

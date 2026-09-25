@@ -48,7 +48,8 @@ class LayerQuantization:
     :param indices: bits -> uint8 [m, n] on the CPU. Incremental mode stores only parent_bits;
         standalone mode stores every bit-width.
     :param luts: bits -> float16 [m, 2**bits] on the CPU, one codebook per row.
-    :param relative_error: bits -> J / sum(f w^2) over the whole matrix, computed with the float16 LUTs.
+    :param relative_error: bits -> J / sum(f w^2) over the whole matrix, computed with the float16 LUTs;
+        0 for an all-zero matrix, which every codebook reconstructs exactly.
     :param lloyd_iterations: Maximum Lloyd iteration count over all chunks and bit-widths.
     """
     indices: dict[int, torch.Tensor]
@@ -57,12 +58,17 @@ class LayerQuantization:
     lloyd_iterations: int
 
 def quantize_layer(weight: Tensor, fisher: Tensor, cfg: QuantizerConfig, generator_seed: int) -> LayerQuantization:
-    """Quantize every row of one matrix; weight and fisher are [m, n] on the compute device."""
+    """Quantize every row of one matrix; weight and fisher are [m, n] on the compute device.
+
+    :raises ValueError: If n < 2**parent_bits, since a row cannot fill the parent codebook.
+    """
 ```
 
 ```python
 def quantize_layer(weight, fisher, cfg, generator_seed) -> LayerQuantization:
     m, n = weight.shape
+    if n < 2**cfg.parent_bits:
+        raise ValueError(...)
     bit_widths = range(cfg.seed_bits, cfg.parent_bits + 1)
     stored_bits = [cfg.parent_bits] if cfg.mode == "incremental" else list(bit_widths)
     indices = {b: torch.empty(m, n, dtype=torch.uint8) for b in stored_bits}
@@ -94,7 +100,7 @@ def quantize_layer(weight, fisher, cfg, generator_seed) -> LayerQuantization:
                 ids = torch.empty_like(ids_sorted).scatter_(1, rows.order, ids_sorted)
                 indices[b][start:stop] = ids.to(torch.uint8).cpu()
 
-    relative_error = {b: error_sum[b] / energy_sum for b in bit_widths}
+    relative_error = {b: error_sum[b] / energy_sum if energy_sum > 0 else 0.0 for b in bit_widths}
     return LayerQuantization(indices, luts, relative_error, lloyd_iterations=...)
 ```
 
@@ -161,7 +167,7 @@ Tests for this spec are listed in spec 0010 under `tests/quantization/`. The ker
 
 - `prepare_rows` prefix sums match a Python brute force. Zero weights get zero sensitivity, and all-zero rows fall back to uniform weights.
 - `segment_stats` matches a brute-force weighted mean and cost for random segments, including empty ones.
-- `weighted_kmeanspp_init` returns sorted values drawn from the row. They are distinct whenever the row has at least $K$ distinct values, and identical for the same seed.
+- `weighted_kmeanspp_init` returns sorted values drawn from the row. They are distinct whenever the row has at least $K$ distinct values with positive conditioned sensitivity (only those can be drawn), and identical for the same seed.
 - `weighted_lloyd` never increases $J$ relative to its initialization. At convergence, every centroid is its segment's weighted mean, and the borders are a fixed point of the assignment step. On rows with $n \le 10$ and $K \le 3$, its $J$ is at least the exact optimum from a brute-force search over contiguous partitions.
 - `split_all_segments` picks, for every segment, the split that a brute-force scan over all split points identifies as optimal. Its children are nested, and $J$ never increases.
 - `quantize_layer` has these properties:
@@ -171,7 +177,8 @@ Tests for this spec are listed in spec 0010 under `tests/quantization/`. The ker
   - `relative_error` is non-increasing in $b$ in incremental mode;
   - the same inputs and seed give bitwise-identical outputs on repeated calls;
   - incremental and standalone share the seed level exactly;
-  - changing `row_chunk` preserves every chunk-independent property above (see the note below).
+  - changing `row_chunk` preserves every chunk-independent property above (see the note below);
+  - an all-zero matrix has `relative_error` 0, and rows shorter than $2^{B}$ raise `ValueError`.
 - `quantize_model` produces one entry per target in order, and leaves every model weight bitwise unchanged.
 
 **Note on chunking.** The k-means++ draws for a chunk depend on which rows share that chunk, so changing `row_chunk` can change the codebooks. `row_chunk` is part of `QuantizerConfig`, and so part of the quantized cache key (spec 0002). The chunking test therefore asserts only the chunk-independent properties (shapes, dtypes, nesting, and monotone error), not equality across chunk sizes.
