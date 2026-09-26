@@ -1,6 +1,5 @@
 """Tests for the loss, body, and sliced LM head of a causal LM (spec 0003)."""
 
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import cast
 
@@ -113,55 +112,43 @@ def test_sliced_logits_detect_a_forward_that_soft_caps_its_logits(
         handle.remove()
 
 
-def _null_scaling(model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Break the model: a null logits_scaling, which the strict config still accepts."""
-    monkeypatch.setattr(model.config, "logits_scaling", None)
-
-
-def _identity_head(model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Break the model: output embeddings that are not an nn.Linear."""
-    monkeypatch.setattr(model, "get_output_embeddings", nn.Identity)
-
-
-def _no_decoder(model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Break the model: get_decoder() returns no module."""
-    monkeypatch.setattr(model, "get_decoder", lambda: None)
-
-
-def _build_head(model: GraniteMoeHybridForCausalLM) -> object:
-    """Build the head half of the split."""
-    return logit_head(model)
-
-
-def _run_body(model: GraniteMoeHybridForCausalLM) -> object:
-    """Run the body half of the split."""
-    return body_hidden_states(model, _TOKENS)
-
-
-type _Breaker = Callable[[GraniteMoeHybridForCausalLM, pytest.MonkeyPatch], None]
-
-
-@pytest.mark.parametrize(
-    ("break_model", "split", "message"),
-    [
-        (_null_scaling, _build_head, "logits_scaling is NoneType"),
-        (_identity_head, _build_head, "not nn.Linear"),
-        (_no_decoder, _run_body, "not a module"),
-    ],
-)
-def test_split_refuses_a_model_that_is_not_body_plus_linear_head(
-    scaled_model: GraniteMoeHybridForCausalLM,
-    monkeypatch: pytest.MonkeyPatch,
-    break_model: _Breaker,
-    split: Callable[[GraniteMoeHybridForCausalLM], object],
-    message: str,
+def test_head_refuses_a_null_logits_scaling(
+    scaled_model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    Given: a model with a null logits_scaling, a non-linear head, or no decoder body.
-    When: the matching half of the body/head split is built.
-    Then: SlicedLogitsError names what is missing instead of producing wrong logits.
+    Given: a model whose config sets logits_scaling to None, which the strict config accepts.
+    When: the logit head is built.
+    Then: SlicedLogitsError names the bad value instead of producing unscaled logits.
     """
-    break_model(scaled_model, monkeypatch)
+    monkeypatch.setattr(scaled_model.config, "logits_scaling", None)
 
-    with pytest.raises(SlicedLogitsError, match=message):
-        split(scaled_model)
+    with pytest.raises(SlicedLogitsError, match="logits_scaling is NoneType"):
+        logit_head(scaled_model)
+
+
+def test_head_refuses_output_embeddings_that_are_not_linear(
+    scaled_model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Given: a model whose output embeddings are an nn.Identity.
+    When: the logit head is built.
+    Then: SlicedLogitsError is raised, since the head could not be sliced by position.
+    """
+    monkeypatch.setattr(scaled_model, "get_output_embeddings", nn.Identity)
+
+    with pytest.raises(SlicedLogitsError, match=r"not nn\.Linear"):
+        logit_head(scaled_model)
+
+
+def test_body_refuses_a_model_without_a_decoder_module(
+    scaled_model: GraniteMoeHybridForCausalLM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Given: a model whose get_decoder() returns None.
+    When: the body's hidden states are requested.
+    Then: SlicedLogitsError is raised instead of an AttributeError deep inside the call.
+    """
+    monkeypatch.setattr(scaled_model, "get_decoder", lambda: None)
+
+    with pytest.raises(SlicedLogitsError, match="not a module"):
+        body_hidden_states(scaled_model, _TOKENS)

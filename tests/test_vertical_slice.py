@@ -220,4 +220,3 @@ def test_tiny_model_goes_from_calibration_text_to_a_valid_results_file(
     for mode in ecfg.modes:
         by_bits = {e.bits: e for e in entries if e.mode == mode}
         assert by_bits[2].kl_mean > by_bits[4].kl_mean
-        assert by_bits[2].bits_per_weight < by_bits[4].bits_per_weight

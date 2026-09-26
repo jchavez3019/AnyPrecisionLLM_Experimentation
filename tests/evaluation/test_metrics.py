@@ -20,9 +20,12 @@ _V: int = 50
 
 
 def _head(seed: int) -> nn.Linear:
-    """A seeded random ``[H] -> [V]`` LM head."""
-    torch.default_generator.manual_seed(seed)
-    return nn.Linear(_H, _V, bias=False)
+    """A seeded random ``[H] -> [V]`` LM head, drawn from a local generator."""
+    head = nn.Linear(_H, _V, bias=False)
+    generator = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        head.weight.copy_(torch.randn(_V, _H, generator=generator) / _H**0.5)
+    return head
 
 
 def _outputs(hidden: torch.Tensor, head: nn.Linear) -> ChunkOutputs:

@@ -4,10 +4,8 @@ Every config is an instance of the pydantic schemas in ``anyprec.config.schemas`
 can never drift from the schema it stands in for.
 """
 
-import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
 
 import torch
 from torch import nn
@@ -30,6 +28,7 @@ from anyprec.config.schemas import (
     QuantizeRunConfig,
     RotationNone,
 )
+from anyprec.models.discovery import find_quantizable_linears
 from anyprec.quantization.model import quantize_model
 from anyprec.sensitivity.fisher import FisherResult
 from anyprec.utils.hashing import JsonValue, sha256_key
@@ -66,8 +65,15 @@ def tiny_model(seed: int = 0) -> GraniteMoeHybridForCausalLM:
     :param seed: Seed of the weight initialization.
     :return: The model on the CPU.
     """
-    torch.default_generator.manual_seed(seed)
-    return GraniteMoeHybridForCausalLM(tiny_granite_config()).eval()
+    # Hugging Face initializes weights from the global generator, so it must be seeded. Restoring
+    # the saved state afterwards means building a model never changes another test's draws.
+
+    saved = torch.default_generator.get_state()
+    try:
+        torch.default_generator.manual_seed(seed)
+        return GraniteMoeHybridForCausalLM(tiny_granite_config()).eval()
+    finally:
+        torch.default_generator.set_state(saved)
 
 
 def char_encode(text: str) -> list[int]:
@@ -91,18 +97,13 @@ def corpus(num_documents: int = 12) -> list[str]:
 
 
 def target_weights(model: nn.Module) -> dict[str, torch.Tensor]:
-    """Select the tiny model's quantizable weight matrices in module order.
+    """Select the tiny model's quantizable weight matrices through real module discovery.
 
     :param model: The tiny Granite model.
-    :return: Qualified module name to its live ``[m, n]`` weight parameter.
+    :return: Qualified module name to its live ``[m, n]`` weight parameter, in discovery order.
     """
-    pattern = re.compile(TINY_PATTERN)
-    modules = cast("Iterator[tuple[str, nn.Module]]", model.named_modules())
-    return {
-        name: module.weight
-        for name, module in modules
-        if pattern.match(name) and isinstance(module, nn.Linear)
-    }
+    targets = find_quantizable_linears(model, model_config().quantizable_modules)
+    return {name: linear.weight for name, linear in targets.items()}
 
 
 def random_fisher(weights: Mapping[str, torch.Tensor], seed: int = 0) -> dict[str, torch.Tensor]:
