@@ -118,6 +118,18 @@ class QuantizerConfig(FrozenModel):
             )
         return self
 
+    def with_mode(self, mode: QuantizerMode) -> Self:
+        """Return the same settings in another mode, validated like any other config.
+
+        The evaluation pipeline derives one artifact key per requested mode from a single
+        quantizer config. ``model_copy(update=...)`` would skip validation, so a bad mode would
+        reach the key function unchecked.
+
+        :param mode: The quantizer mode.
+        :return: A new, validated config that differs only in ``mode``.
+        """
+        return self.model_validate({**self.model_dump(), "mode": mode})
+
 
 class RotationNone(FrozenModel):
     """No rotation before clustering (ADR 0006)."""

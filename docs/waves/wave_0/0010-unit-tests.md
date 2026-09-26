@@ -35,9 +35,10 @@ The tree mirrors `src/anyprec`, so each spec's verification list maps onto one d
 tests/
 ├── conftest.py                      # shared fixtures, hypothesis profile
 ├── factories.py                     # builders of the pydantic configs and the tiny model
+├── offline.py                       # OfflineLoaders: recording stand-ins for the Hub loaders
 ├── strategies.py                    # hypothesis strategies for rows and codebooks
 ├── test_layering.py                 # spec 0001
-├── test_vertical_slice.py           # tiny model: quantize, store round trip, set_precision (wave index, step 4)
+├── test_vertical_slice.py           # tiny model through both pipelines: text to results.json
 ├── config/
 │   ├── test_schemas.py              # spec 0002
 │   └── test_hydra_compose.py        # spec 0002: every YAML composes and validates
@@ -90,7 +91,7 @@ Fixtures build real objects of the library's own types. Configs are pydantic ins
 | `quantize_run_config` | function | `QuantizeRunConfig` with `device="cpu"`, `output.cache_dir = tmp_path / "cache"` |
 | `evaluate_run_config` | function | `EvaluateRunConfig` with `chunk_len=32`, `max_chunks=2`, `bits=[2, 3, 4]` |
 | `tiny_artifact` | function | A `QuantizedArtifact` from `quantize_model` on `tiny_model` with a random positive Fisher, saved and reloaded through `ArtifactStore`; parametrized over both quantizer modes |
-| `offline_loaders` | function | Monkeypatches `load_model`, `load_tokenizer`/`make_encoder`, and `load_texts` in both pipeline modules |
+| `offline_loaders` | function | Monkeypatches `load_model`, `load_tokenizer`, `make_encoder`, and `load_texts` in both pipeline modules with an `OfflineLoaders` (`tests/offline.py`) that records each call; restores the global generators that the pipelines' `seed_everything` reseeds |
 
 ```python
 TINY_GRANITE = GraniteMoeHybridConfig(

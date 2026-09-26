@@ -10,12 +10,13 @@ import torch
 from safetensors.torch import save
 
 import anyprec.artifacts.store as store_module
-from anyprec.artifacts.keys import fisher_key, quantized_snapshot
+from anyprec.artifacts.keys import fisher_key, fisher_snapshot, quantized_snapshot
 from anyprec.artifacts.manifest import ModuleEntry, module_entries
 from anyprec.artifacts.store import (
     ArtifactMismatchError,
     ArtifactNotFoundError,
     ArtifactStore,
+    FisherMeta,
     QuantizedMeta,
 )
 from anyprec.config.schemas import QuantizerMode, QuantizeRunConfig
@@ -164,7 +165,8 @@ def test_failure_midway_through_save_leaves_no_artifact_and_no_temporary_directo
     config = factories.quantize_run_config(tmp_path)
     weights = factories.target_weights(factories.tiny_model())
     result = factories.fisher_result(weights, config.calibration.num_sequences)
-    snapshot, key = factories.fisher_snapshot_and_key(config)
+    snapshot = fisher_snapshot(config.model, config.calibration, config.rotation)
+    key = sha256_key(snapshot)
     store = ArtifactStore(config.output.cache_dir)
     calls: list[Path] = []
 
@@ -178,7 +180,9 @@ def test_failure_midway_through_save_leaves_no_artifact_and_no_temporary_directo
     monkeypatch.setattr(store_module, "_save_tensors", failing_save)
 
     with pytest.raises(OSError, match="disk full"):
-        store.save_fisher(key, snapshot, result, factories.fisher_meta(config))
+        store.save_fisher(
+            key, snapshot, result, FisherMeta.from_config(config, torch.device("cpu"))
+        )
 
     assert list((config.output.cache_dir / "fisher").iterdir()) == []
 
@@ -212,15 +216,15 @@ def test_save_rejects_layers_whose_bit_widths_do_not_match_the_mode(saved: _Save
         saved.store.save_quantized(saved.key, saved.snapshot, saved.result, meta)
 
 
-def test_load_raises_not_found_naming_the_command_that_creates_it(tmp_path: Path) -> None:
+def test_load_raises_not_found_naming_the_missing_directory(tmp_path: Path) -> None:
     """
     Given: an empty cache.
     When: a quantized artifact is requested.
-    Then: ArtifactNotFoundError names the quantization entry script, and has_quantized is False.
+    Then: ArtifactNotFoundError names the directory it looked in, and has_quantized is False.
     """
     store = ArtifactStore(tmp_path)
 
-    with pytest.raises(ArtifactNotFoundError, match=r"quantize_any_precision\.py"):
+    with pytest.raises(ArtifactNotFoundError, match=r"quantized/aaaaaaaaaaaaaaaa"):
         store.load_quantized("a" * 64, {}, [])
     assert not store.has_quantized("a" * 64)
 
@@ -333,9 +337,12 @@ def test_fisher_save_rejects_losses_of_the_wrong_length(tmp_path: Path) -> None:
     config = factories.quantize_run_config(tmp_path)
     weights = factories.target_weights(factories.tiny_model())
     result = factories.fisher_result(weights, config.calibration.num_sequences - 1)
-    snapshot, key = factories.fisher_snapshot_and_key(config)
+    snapshot = fisher_snapshot(config.model, config.calibration, config.rotation)
+    key = sha256_key(snapshot)
     store = ArtifactStore(config.output.cache_dir)
 
     with pytest.raises(ValueError, match="losses shape"):
-        store.save_fisher(key, snapshot, result, factories.fisher_meta(config))
+        store.save_fisher(
+            key, snapshot, result, FisherMeta.from_config(config, torch.device("cpu"))
+        )
     assert not store.has_fisher(key)

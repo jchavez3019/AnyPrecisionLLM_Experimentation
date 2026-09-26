@@ -1,8 +1,12 @@
 """Shared pytest configuration and fixtures (spec 0010)."""
 
+import random
+from collections.abc import Iterator
 from pathlib import Path
 
+import numpy as np
 import pytest
+import torch
 from hypothesis import HealthCheck, settings
 from transformers import GraniteMoeHybridConfig, GraniteMoeHybridForCausalLM
 
@@ -15,7 +19,10 @@ from anyprec.config.schemas import (
     QuantizeRunConfig,
 )
 from anyprec.data.calibration import Encoder
+from anyprec.evaluation import pipeline as evaluation_pipeline
+from anyprec.quantization import pipeline as quantization_pipeline
 from tests import factories
+from tests.offline import OfflineLoaders
 
 # Derandomized hypothesis runs make every failure reproducible from the test name alone.
 
@@ -69,6 +76,30 @@ def quantize_run_config(tmp_path: Path) -> QuantizeRunConfig:
 def evaluate_run_config(tmp_path: Path) -> EvaluateRunConfig:
     """An evaluation run config writing under ``tmp_path``."""
     return factories.evaluate_run_config(tmp_path)
+
+
+@pytest.fixture
+def offline_loaders(monkeypatch: pytest.MonkeyPatch) -> Iterator[OfflineLoaders]:
+    """Replace the Hub loaders in both pipeline modules with recording offline stand-ins.
+
+    Both pipelines call ``seed_everything``, so the global generators are restored afterwards,
+    and a pipeline test never changes another test's random draws.
+    """
+    loaders = OfflineLoaders()
+    for module in (quantization_pipeline, evaluation_pipeline):
+        for name in ("load_model", "load_tokenizer", "make_encoder", "load_texts"):
+            monkeypatch.setattr(module, name, getattr(loaders, name))
+
+    # Save every generator seed_everything touches; CUDA generators are seeded lazily and
+    # never drawn from by the offline suite.
+
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()
+    torch_state = torch.default_generator.get_state()
+    yield loaders
+    random.setstate(python_state)
+    np.random.set_state(numpy_state)
+    torch.default_generator.set_state(torch_state)
 
 
 @pytest.fixture(params=["incremental", "standalone"])

@@ -147,7 +147,7 @@ A lookup either returns an artifact that matches the request exactly, or raises.
 
 | Check | Failure |
 | --- | --- |
-| The directory and `manifest.json` exist | `ArtifactNotFoundError` naming the path and the command that would create it |
+| The directory and `manifest.json` exist | `ArtifactNotFoundError` naming the path; the evaluation pipeline adds the command that would create it (spec 0009) |
 | The manifest parses into the expected schema and `kind` | `ArtifactMismatchError` |
 | `schema_version` equals the current version | `ArtifactMismatchError` |
 | `key` equals the requested full key (a 16-hex prefix collision guard) | `ArtifactMismatchError` |

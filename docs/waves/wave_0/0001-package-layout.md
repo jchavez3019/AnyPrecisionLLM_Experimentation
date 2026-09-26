@@ -95,9 +95,10 @@ Modules import only from their own layer or the layers below them. This keeps th
 
 *Each layer may import from any layer with a smaller number, never from a larger one. `anyprec/__init__.py` holds only `__version__` and imports nothing from the package.*
 
-Five rules apply on top of the layering:
+Six rules apply on top of the layering:
 
-- **Library modules import from the defining module, never from a subpackage `__init__`.** For example, `artifacts/store.py` writes `from anyprec.quantization.model import ModelQuantization`, not `from anyprec.quantization import ModelQuantization`. The subpackage `__init__` files re-export their pipelines (layer 5), so importing through them from a lower layer would create an import cycle. The re-exports exist for entry scripts, tests, and notebooks.
+- **Library modules import from the defining module, never from a subpackage `__init__`.** For example, `artifacts/store.py` writes `from anyprec.quantization.model import ModelQuantization`, not `from anyprec.quantization import ModelQuantization`. The re-exports exist for entry scripts, tests, and notebooks.
+- **Pipelines are not re-exported.** Python runs a package's `__init__` before any of its submodules, so `artifacts/store.py` importing `anyprec.quantization.model` runs `anyprec/quantization/__init__.py` first. If that file imported `quantization.pipeline` (layer 5), which imports `artifacts.store`, the store would be half-initialized. Entry scripts and tests import `run_quantization` from `anyprec.quantization.pipeline` and `run_evaluation` from `anyprec.evaluation.pipeline`.
 
 - **Hydra stops at the entry scripts.** Only `quantization/quantize_any_precision.py` and `evaluation/evaluate_any_precision.py` import `hydra` or `omegaconf`, plus `anyprec.config.loading`, which receives a `DictConfig`. Everything else receives frozen pydantic objects.
 - **No module reads the environment or the working directory.** Paths come from `OutputConfig` (spec 0002).
@@ -116,10 +117,10 @@ Each subpackage's `__init__.py` re-exports exactly the names below and defines `
 | `anyprec.models` | `CausalLM`, `load_model`, `load_tokenizer`, `find_quantizable_linears`, `QuantizableModuleError`, `causal_lm_loss`, `body_hidden_states`, `logit_head`, `check_sliced_logits`, `SlicedLogitsError` | 0003 |
 | `anyprec.data` | `load_texts`, `Encoder`, `make_encoder`, `sample_calibration`, `CalibrationError`, `load_eval_tokens`, `iter_chunks` | 0003, 0009 |
 | `anyprec.sensitivity` | `estimate_fisher`, `FisherResult` | 0004 |
-| `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model`, `run_quantization` | 0005, 0009 |
+| `anyprec.quantization` | `PreparedRows`, `prepare_rows`, `segment_stats`, `weighted_kmeanspp_init`, `weighted_lloyd`, `LloydResult`, `split_all_segments`, `segment_ids`, `LayerQuantization`, `quantize_layer`, `ModelQuantization`, `quantize_model` | 0005 |
 | `anyprec.artifacts` | `FISHER_SCHEMA_VERSION`, `QUANTIZED_SCHEMA_VERSION`, `fisher_snapshot`, `quantized_snapshot`, `fisher_key`, `quantized_key`, `ModuleEntry`, `module_entries`, `FisherManifest`, `QuantizedManifest`, `ArtifactStats`, `ArtifactStore`, `QuantizedArtifact`, `FisherMeta`, `QuantizedMeta`, `ArtifactNotFoundError`, `ArtifactMismatchError` | 0002, 0006 |
 | `anyprec.inference` | `set_precision`, `snapshot_weights`, `restore_weights`, `PrecisionError` | 0007 |
-| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `LogitHead`, `ChunkOutputs`, `ChunkMetrics`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `RESULTS_SCHEMA_VERSION`, `Results`, `ReferenceEntry`, `QuantizedEntry`, `PerplexityResult`, `make_reference_entry`, `make_quantized_entry`, `run_evaluation` | 0008, 0009 |
+| `anyprec.evaluation` | `layer_bits_per_weight`, `parent_bits_per_weight`, `bits_report`, `BitsReport`, `LogitHead`, `ChunkOutputs`, `ChunkMetrics`, `chunk_metrics`, `StreamingMetrics`, `MetricSummary`, `RESULTS_SCHEMA_VERSION`, `Results`, `ReferenceEntry`, `QuantizedEntry`, `PerplexityResult`, `make_reference_entry`, `make_quantized_entry` | 0008 |
 
 ## Verification
 

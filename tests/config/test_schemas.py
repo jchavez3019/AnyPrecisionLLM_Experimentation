@@ -1,6 +1,7 @@
 """Tests for the pydantic config schemas (spec 0002)."""
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -10,6 +11,7 @@ from anyprec.config.schemas import (
     EvaluateRunConfig,
     QuantizableModules,
     QuantizerConfig,
+    QuantizerMode,
 )
 from tests import factories
 
@@ -42,6 +44,33 @@ def test_quantizer_config_rejects_invalid_bit_range(seed_bits: int, parent_bits:
 
     with pytest.raises(ValidationError):
         QuantizerConfig.model_validate(settings)
+
+
+def test_quantizer_with_mode_changes_only_the_mode() -> None:
+    """
+    Given: incremental quantizer settings.
+    When: the standalone variant is derived with with_mode.
+    Then: every field but mode is equal, and the original config is unchanged.
+    """
+    incremental = factories.quantizer_config(mode="incremental")
+
+    standalone = incremental.with_mode("standalone")
+
+    assert standalone.mode == "standalone"
+    assert incremental.mode == "incremental"
+    assert standalone.model_dump(exclude={"mode"}) == incremental.model_dump(exclude={"mode"})
+
+
+def test_quantizer_with_mode_validates_the_new_mode() -> None:
+    """
+    Given: valid quantizer settings.
+    When: with_mode is given a mode outside the QuantizerMode literal.
+    Then: validation fails, which model_copy(update=...) would not have done.
+    """
+    unknown = cast("QuantizerMode", "nested")
+
+    with pytest.raises(ValidationError, match="mode"):
+        factories.quantizer_config().with_mode(unknown)
 
 
 def test_quantizable_modules_rejects_invalid_regex() -> None:

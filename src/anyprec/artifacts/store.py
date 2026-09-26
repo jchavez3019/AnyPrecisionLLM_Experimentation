@@ -39,10 +39,6 @@ from anyprec.utils.versions import library_versions
 
 _MANIFEST: str = "manifest.json"
 _STATS: str = "stats.json"
-_CREATE_HINT: str = (
-    "run quantization/quantize_any_precision.py with the same model, calibration, quantizer, "
-    "and rotation settings to create it"
-)
 
 type _Shape = tuple[int, ...]
 
@@ -432,9 +428,11 @@ def _load_manifest[M: ManifestBase](directory: Path, schema: type[M]) -> M:
     :raises ArtifactNotFoundError: If the directory or its manifest is missing.
     :raises ArtifactMismatchError: If the manifest does not parse into ``schema``.
     """
+    # The store knows paths, not commands; the pipeline that asked adds the command to run.
+
     path = directory / _MANIFEST
     if not path.is_file():
-        raise ArtifactNotFoundError(f"no artifact at {directory}; {_CREATE_HINT}")
+        raise ArtifactNotFoundError(f"no artifact at {directory}")
     try:
         return schema.model_validate_json(path.read_text(encoding="utf-8"))
     except ValidationError as error:

@@ -42,7 +42,8 @@ anyprec = ["py.typed"]
 line-length = 100
 target-version = "py313"
 src = ["src", "quantization", "evaluation", "tests"]
-extend-exclude = ["any-precision-llm", "outputs"]
+# The ADRs and specs hold pseudo-code in fenced blocks; it is prose, not code to format.
+extend-exclude = ["any-precision-llm", "outputs", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

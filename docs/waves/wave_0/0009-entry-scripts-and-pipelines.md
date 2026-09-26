@@ -93,7 +93,8 @@ def run_quantization(cfg: QuantizeRunConfig, run_dir: Path) -> QuantizationOutco
         texts = load_texts(cfg.calibration.path, cfg.calibration.name, cfg.calibration.data_files,
                            cfg.calibration.split, cfg.calibration.text_field)
         calibration = sample_calibration(texts, make_encoder(load_tokenizer(cfg.model)), cfg.calibration)  # [N, T]
-        result = estimate_fisher(model, calibration, targets, progress=_tqdm_counter("fisher"))
+        with tqdm(total=cfg.calibration.num_sequences, desc="fisher") as bar:
+            result = estimate_fisher(model, calibration, targets, progress=_fisher_progress(bar.update))
         store.save_fisher(f_key, f_snapshot, result, FisherMeta.from_config(cfg, device))
         fisher = result.diagonals
         del result, calibration
@@ -104,16 +105,17 @@ def run_quantization(cfg: QuantizeRunConfig, run_dir: Path) -> QuantizationOutco
     if device.type == "cuda":
         torch.cuda.empty_cache()
     weights = {name: linear.weight for name, linear in targets.items()}   # [m, n] each; rotated here once ADR 0006 lands
-    quantization = quantize_model(weights, fisher, cfg.quantizer, device, progress=_tqdm_names(len(targets)))
+    with tqdm(total=len(weights), desc="k-means") as bar:
+        quantization = quantize_model(weights, fisher, cfg.quantizer, device, progress=_module_progress(bar.update))
 
     # Phase 3: persist atomically, and record a human-readable summary in the Hydra run directory.
 
     q_dir = store.save_quantized(q_key, q_snapshot, quantization, QuantizedMeta.from_config(cfg, device))
-    _write_summary(run_dir / "quantize_summary.json", f_key, q_key, quantization)
+    _write_summary(run_dir / "quantize_summary.json", outcome, quantization, cfg)
     return _outcome(..., fisher_reused=fisher_reused, quantized_reused=False)
 ```
 
-`quantize_summary.json` lists both keys, the directories, the timings, and the per-bit median relative error across modules. It is a convenience for people reading the run; nothing reads it back.
+`quantize_summary.json` lists the mode, both keys, the directories, whether the Fisher was reused, the k-means time, and the per-bit median relative error across modules. It is a convenience for people reading the run; nothing reads it back.
 
 The model is loaded in `model.dtype` (bfloat16), which is the dtype the Fisher is defined on (ADR 0003). `quantize_model` casts each weight to float32 on its own. The pipeline is the one place that decides which tensors are clustered, so ADR 0006's rotation becomes a change to the `weights` mapping above, not to `quantize_model`.
 
@@ -132,7 +134,7 @@ def run_evaluation(cfg: EvaluateRunConfig, run_dir: Path) -> Results:
 
     f_key = sha256_key(fisher_snapshot(cfg.model, cfg.calibration, cfg.rotation))
     requested = {
-        mode: quantized_snapshot(f_key, cfg.quantizer.model_copy(update={"mode": mode}))
+        mode: quantized_snapshot(f_key, cfg.quantizer.with_mode(mode))
         for mode in cfg.modes
     }
 
@@ -159,22 +161,24 @@ def run_evaluation(cfg: EvaluateRunConfig, run_dir: Path) -> Results:
     # Prove the sliced-head metric path reproduces forward(), then that both instances agree,
     # before any quantized weight is written (spec 0008).
 
-    probe = eval_tokens[cfg.eval.kl.dataset][None, :512].to(device)               # [1, 512]
-    check_sliced_logits(reference, probe, cfg.eval.lm_head_chunk_tokens)
-    check_sliced_logits(quantized, probe, cfg.eval.lm_head_chunk_tokens)
-    _assert_identical_models(reference, quantized, eval_tokens[cfg.eval.kl.dataset], cfg.eval, device)
+    _startup_checks(reference, quantized, eval_tokens[cfg.eval.kl.dataset], cfg.eval, device)
     report = bits_report([m.shape for m in modules], _count_params(reference), cfg.quantizer.seed_bits, cfg.quantizer.parent_bits)
 
     # The metric loop of spec 0008: reference metrics once, then every (mode, bits).
 
-    reference_entry, entries = _sweep(reference, quantized, artifacts, eval_tokens, cfg, report, device)
+    reference_entry = make_reference_entry({name: _evaluate_dataset(reference, None, tokens, ...) for name, tokens in eval_tokens.items()})
+    entries = _sweep(reference, quantized, artifacts, eval_tokens, cfg.eval, report, device)
 
-    results = Results(schema_version=RESULTS_SCHEMA_VERSION, config=cfg, fisher_key=f_key, bits=..., reference=reference_entry, entries=entries, ...)
-    (run_dir / "results.json").write_text(results.model_dump_json(indent=2))
+    results = Results(schema_version=RESULTS_SCHEMA_VERSION, config=cfg, fisher_key=f_key, bits=report, reference=reference_entry, entries=entries, ...)
+    _write_text_atomic(run_dir / "results.json", results.model_dump_json(indent=2))
     return results
 ```
 
-`_load_or_explain` turns `ArtifactNotFoundError` into an error message that includes the exact command, for example `python quantization/quantize_any_precision.py quantizer.mode=standalone`. `ArtifactMismatchError` propagates unchanged.
+`QuantizerConfig.with_mode` validates the derived config, so a mode outside `QuantizerMode` fails there rather than reaching the key function. `_evaluate_dataset` is the per-dataset loop of spec 0008; the start-up checks and the sweep both call it.
+
+`_startup_checks` takes the first `chunk_len` chunk of the KL dataset, capped at 512 tokens for `check_sliced_logits`, because that check's full-vocabulary forward is the largest allocation of the run. It runs the check on both models, then the same-weights check on that whole first chunk, and raises `SameWeightsError` if the mean KL exceeds $10^{-6}$ or the agreement is below 1.
+
+The store's own `ArtifactNotFoundError` names only the missing directory, because the store does not know which command created an artifact. `_load_or_explain` re-raises it with the exact command, for example `python quantization/quantize_any_precision.py quantizer.mode=standalone`, plus a reminder to repeat this run's overrides. `ArtifactMismatchError` propagates unchanged.
 
 `results.json` is written with a temporary file and `os.replace`, the same pattern as the artifact store, so an interrupted run never leaves a truncated results file.
 
@@ -222,7 +226,7 @@ python quantization/quantize_any_precision.py rotation=hadamard
 
 ## Verification
 
-Tests for this spec are listed in spec 0010 under `tests/quantization/test_pipeline.py` and `tests/evaluation/test_pipeline.py`. They run offline on the CPU, with `load_model`, `load_tokenizer`, and `load_texts` monkeypatched to return the tiny Granite fixture, the character encoder, and a fixed list of strings.
+Tests for this spec are listed in spec 0010 under `tests/quantization/test_pipeline.py` and `tests/evaluation/test_pipeline.py`. They run offline on the CPU, with `load_model`, `load_tokenizer`, `make_encoder`, and `load_texts` monkeypatched to return the tiny Granite fixture, the character encoder, and a fixed list of strings (the `offline_loaders` fixture of spec 0010). `tests/test_vertical_slice.py` runs both pipelines end to end with the same fixture.
 
 - `run_quantization` on an empty cache computes and saves the Fisher and the artifact, and writes `quantize_summary.json`.
 - A second identical call reports `fisher_reused` and `quantized_reused`, and does not call `estimate_fisher` or `quantize_model`; the tests patch both with spies that fail if called.
@@ -230,4 +234,5 @@ Tests for this spec are listed in spec 0010 under `tests/quantization/test_pipel
 - `rotation=hadamard` raises `NotImplementedError` before any loader is called, and `device="cuda"` on a CUDA-less machine raises `RuntimeError`.
 - `run_evaluation` with a missing standalone artifact raises before tokenizing any dataset, and the message contains `quantizer.mode=standalone`.
 - `run_evaluation` on the tiny model writes a `results.json` that validates as `Results`, with one entry per (mode, bits), in order.
+- Two model instances that load different weights fail the same-weights check with `SameWeightsError`, and no `results.json` is written.
 - The entry scripts compose through Hydra's `compose` API, and a subprocess run of `quantize_any_precision.py --cfg job` exits 0. This proves the `config_path` is correct without running a pipeline.

@@ -11,9 +11,9 @@ import torch
 from torch import nn
 from transformers import GraniteMoeHybridConfig, GraniteMoeHybridForCausalLM
 
-from anyprec.artifacts.keys import fisher_key, fisher_snapshot, quantized_snapshot
+from anyprec.artifacts.keys import fisher_key, quantized_snapshot
 from anyprec.artifacts.manifest import module_entries
-from anyprec.artifacts.store import ArtifactStore, FisherMeta, QuantizedArtifact, QuantizedMeta
+from anyprec.artifacts.store import ArtifactStore, QuantizedArtifact, QuantizedMeta
 from anyprec.config.schemas import (
     CalibrationConfig,
     EvalConfig,
@@ -31,7 +31,7 @@ from anyprec.config.schemas import (
 from anyprec.models.discovery import find_quantizable_linears
 from anyprec.quantization.model import quantize_model
 from anyprec.sensitivity.fisher import FisherResult
-from anyprec.utils.hashing import JsonValue, sha256_key
+from anyprec.utils.hashing import sha256_key
 
 TINY_PATTERN: str = (
     r"^model\.layers\.\d+\.(self_attn\.(q|k|v|o)_proj|shared_mlp\.(input|output)_linear)$"
@@ -129,25 +129,6 @@ def fisher_result(weights: Mapping[str, torch.Tensor], num_losses: int) -> Fishe
     """
     losses = torch.linspace(3.0, 3.5, num_losses)
     return FisherResult(diagonals=random_fisher(weights), losses=losses, seconds=1.5)
-
-
-def fisher_snapshot_and_key(config: QuantizeRunConfig) -> tuple[dict[str, JsonValue], str]:
-    """The Fisher snapshot of a run config and its full key.
-
-    :param config: The run config.
-    :return: ``(snapshot, sha256_key(snapshot))``.
-    """
-    snapshot = fisher_snapshot(config.model, config.calibration, config.rotation)
-    return snapshot, sha256_key(snapshot)
-
-
-def fisher_meta(config: QuantizeRunConfig) -> FisherMeta:
-    """Fisher manifest metadata for a CPU run of ``config``.
-
-    :param config: The run config.
-    :return: The metadata.
-    """
-    return FisherMeta.from_config(config, torch.device("cpu"))
 
 
 def stored_tiny_artifact(
