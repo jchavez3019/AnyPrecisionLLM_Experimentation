@@ -346,3 +346,34 @@ def test_fisher_save_rejects_losses_of_the_wrong_length(tmp_path: Path) -> None:
             key, snapshot, result, FisherMeta.from_config(config, torch.device("cpu"))
         )
     assert not store.has_fisher(key)
+
+
+def _set_key(data: dict[str, object]) -> None:
+    """Record another artifact's key in a manifest, as a 16-hex prefix collision would."""
+    data["key"] = "f" * 64
+
+
+def test_fisher_manifest_reads_metadata_and_rejects_a_recorded_key_mismatch(
+    tmp_path: Path,
+) -> None:
+    """
+    Given: a saved Fisher artifact with per-sequence losses from 3.0 to 3.5.
+    When: its manifest is read alone, then read again after its recorded key is changed.
+    Then: the first read reports the mean loss and sequence count without loading tensors;
+        the second raises ArtifactMismatchError.
+    """
+    config = factories.quantize_run_config(tmp_path)
+    weights = factories.target_weights(factories.tiny_model())
+    result = factories.fisher_result(weights, config.calibration.num_sequences)
+    snapshot = fisher_snapshot(config.model, config.calibration, config.rotation)
+    key = sha256_key(snapshot)
+    store = ArtifactStore(config.output.cache_dir)
+    store.save_fisher(key, snapshot, result, FisherMeta.from_config(config, torch.device("cpu")))
+
+    manifest = store.load_fisher_manifest(key)
+
+    assert manifest.mean_loss == pytest.approx(3.25)
+    assert manifest.num_sequences == config.calibration.num_sequences
+    _edit_manifest(store.fisher_dir(key), _set_key)
+    with pytest.raises(ArtifactMismatchError, match="manifest key"):
+        store.load_fisher_manifest(key)

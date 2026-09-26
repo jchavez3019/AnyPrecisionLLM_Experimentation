@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 import hydra
+import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
@@ -34,6 +35,12 @@ def main(cfg: DictConfig) -> None:
         quantized_state,
         outcome.quantized_dir,
     )
+
+    # Spec 0011 records each stage's peak GPU memory; the allocator tracks it for the process.
+
+    if torch.cuda.is_available():
+        peak_gib = torch.cuda.max_memory_allocated() / 2**30
+        logger.info("peak GPU memory allocated: %.2f GiB", peak_gib)
 
 
 if __name__ == "__main__":

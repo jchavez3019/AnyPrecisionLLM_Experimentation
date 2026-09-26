@@ -73,8 +73,10 @@ tests/
 │   ├── test_metrics.py              # spec 0008
 │   ├── test_bits.py
 │   ├── test_results.py
-│   └── test_pipeline.py             # spec 0009
+│   ├── test_pipeline.py             # spec 0009
+│   └── test_check_acceptance.py     # spec 0011: the checker's criteria on synthetic values
 └── integration/                     # spec 0011; every test marked gpu, network, or slow
+    └── conftest.py                  # Hydra-composed configs, cuda_device, session granite_run
 ```
 
 ## Shared fixtures

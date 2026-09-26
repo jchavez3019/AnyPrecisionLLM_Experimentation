@@ -8,7 +8,7 @@ This spec defines the tests that touch the real Granite checkpoint, the GPU, or 
 
 ## Integration tests
 
-These tests exercise the real model and datasets, at a size that finishes in minutes. They live in `tests/integration/`, and they only run when selected explicitly, because the default `addopts` in `pyproject.toml` deselects all three markers.
+These tests exercise the real model and datasets, at a size that finishes in minutes. They live in `tests/integration/`, and they only run when selected explicitly, because the default `addopts` in `pyproject.toml` deselects all three markers. `tests/integration/conftest.py` composes every config from the shipped YAML through Hydra's `compose` API, with only the overrides a test needs (for example `calibration.num_sequences=8` and a temporary `output.base_dir`), so these tests also prove the defaults of the full run. Its session-scoped `granite_run` fixture quantizes both modes once; the quantize and evaluate tests share it.
 
 | Test | Markers | What it checks |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ python quantization/quantize_any_precision.py quantizer.mode=standalone
 python evaluation/evaluate_any_precision.py
 ```
 
-A short script, `evaluation/check_acceptance.py`, takes the path of `results.json`, reads it, and then loads the two manifests and both `stats.json` files through `ArtifactStore`, using the keys recorded in the results. It prints one line per criterion below with its pass or fail status, and exits nonzero if any hard criterion or reference band fails. The script only reads artifacts; it is a thin checker over the pydantic schemas of specs 0006 and 0008, and it stays reusable as a regression check in later waves.
+A short script, `evaluation/check_acceptance.py`, takes the path of `results.json`, reads it, and then loads both quantized artifacts and the Fisher manifest through `ArtifactStore`, using the keys recorded in the results. The quantized artifacts are loaded against the 168 Granite modules of ADR 0002 in discovery order, so the store's own checks decide the first criterion; the Fisher manifest comes from `load_fisher_manifest` (spec 0006). It prints one line per criterion below with its pass or fail status, and exits nonzero if any hard criterion or reference band fails. The script only reads artifacts; it is a thin checker over the pydantic schemas of specs 0006 and 0008, and it stays reusable as a regression check in later waves.
 
 ## Hard criteria
 
@@ -51,7 +51,7 @@ Every row must pass. Each one follows from a property proven in ADR 0003, a meas
 | For every module in the incremental artifact, `stats.relative_error` is strictly decreasing from 3 to 8 bits | ADR 0003, Section 4, property 1 (strict in practice, since each split separates distinct values) |
 | For every module, the incremental and standalone 3-bit relative errors are equal | ADR 0003, Section 4, property 4 |
 | For every module and every $b \ge 4$, the incremental relative error is at least the standalone error, allowing a relative tolerance of 1% | ADR 0003, Section 4, property 4 (float16 rounding and Lloyd's local optimum make a small inversion possible) |
-| The same-weights check reports mean KL at most $10^{-6}$ and agreement 1 | Spec 0008 |
+| The same-weights check reports mean KL at most $10^{-6}$ and agreement 1 | Spec 0008; `run_evaluation` raises `SameWeightsError` before writing results otherwise, so an existing `results.json` proves it |
 | For both modes, mean KL on WikiText-2 decreases with every added bit | The KL divergence is the objective's target (ADR 0003, Section 1) |
 | For both modes, top-1 agreement at 8 bits is above both its 3-bit value and 0.95 | Agreement is a coarse 0/1 statistic, so only the endpoints are gated; the threshold is conservative at 8-bit errors of about $10^{-5}$ |
 | Quantized perplexity is at or above the reference on both datasets at 3 bits | A 3-bit model cannot beat its own reference by a measurable margin |

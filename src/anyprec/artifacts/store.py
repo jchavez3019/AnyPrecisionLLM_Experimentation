@@ -264,6 +264,19 @@ class ArtifactStore:
         )
         return diagonals
 
+    def load_fisher_manifest(self, key: str) -> FisherManifest:
+        """Read a Fisher manifest without its tensors, for reports that need only its metadata.
+
+        :param key: Full Fisher key.
+        :return: The parsed manifest, whose recorded key equals ``key``.
+        :raises ArtifactNotFoundError: If no artifact exists for the key.
+        :raises ArtifactMismatchError: If the manifest does not parse or records another key.
+        """
+        manifest = _load_manifest(self.fisher_dir(key), FisherManifest)
+        if manifest.key != key:
+            raise ArtifactMismatchError(f"manifest key {manifest.key} != requested {key}")
+        return manifest
+
     def save_quantized(
         self,
         key: str,
