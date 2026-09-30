@@ -1,6 +1,6 @@
 # Spec 0003: Model and Data Loading
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (Hugging Face directly), [ADR 0004](../../adr/0004-evaluation-protocol.md) (evaluation text)
 

@@ -1,6 +1,6 @@
 # Spec 0004: Fisher Estimation
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0003](../../adr/0003-fisher-weighted-kmeans-methodology.md), Section 1 (empirical Fisher) and Section 6 (`estimate_fisher`)
 

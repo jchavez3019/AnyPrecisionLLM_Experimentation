@@ -1,6 +1,6 @@
 # Spec 0007: Simulated Inference
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0005](../../adr/0005-artifact-format-and-simulated-inference.md) (simulated inference)
 

@@ -1,6 +1,6 @@
 # Spec 0009: Entry Scripts and Pipelines
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (entry scripts, Hydra, caching), and the orchestration that ties specs 0002–0008 together
 

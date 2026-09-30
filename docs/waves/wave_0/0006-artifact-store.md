@@ -1,6 +1,6 @@
 # Spec 0006: Artifact Store
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0005](../../adr/0005-artifact-format-and-simulated-inference.md) (on-disk layout, manifest, atomic writes), [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (caching)
 

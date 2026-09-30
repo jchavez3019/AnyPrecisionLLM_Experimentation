@@ -1,6 +1,6 @@
 # Spec 0011: Integration and Acceptance
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: the last three gates of the wave's definition of done
 

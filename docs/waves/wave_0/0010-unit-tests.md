@@ -1,6 +1,6 @@
 # Spec 0010: Unit Tests
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0001](../../adr/0001-code-maintainability.md) (verification loop), [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (pydantic-built fixtures)
 

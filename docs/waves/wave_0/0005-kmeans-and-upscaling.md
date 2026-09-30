@@ -1,6 +1,6 @@
 # Spec 0005: Weighted k-Means and Incremental Upscaling
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0003](../../adr/0003-fisher-weighted-kmeans-methodology.md), Sections 2–6
 

@@ -16,6 +16,7 @@ Status values used in this project:
 | --- | --- |
 | Proposed | Under discussion, not yet adopted |
 | Accepted | Adopted and in force |
+| Deferred | Design adopted, implementation postponed; the code reserves its interface |
 | Superseded | Replaced by a later ADR (which is referenced) |
 | Deprecated | No longer relevant, not replaced |
 
@@ -30,6 +31,7 @@ Status values used in this project:
 | [0005](0005-artifact-format-and-simulated-inference.md) | Quantized Artifact Format and Simulated Inference | Proposed |
 | [0006](0006-hadamard-rotation.md) | Hadamard Rotation Before Clustering (Opt-In, Deferred) | Proposed |
 | [0007](0007-llm-as-judge-evaluation.md) | LLM-as-a-Judge Evaluation of Answer Quality | Proposed |
+| [0008](0008-batched-and-per-token-fisher.md) | Batched and Per-Token Fisher Estimation | Accepted |
 
 ## How the records relate
 
@@ -42,6 +44,7 @@ flowchart TD
     a3 --> a6["0006 Hadamard rotation (deferred)"]
     a6 -.->|future comparison| a4
     a4 --> a7["0007 LLM-as-a-judge"]
+    a3 --> a8["0008 Batched and per-token Fisher"]
 ```
 
 *Each arrow points from a record to one that builds on its terms.*

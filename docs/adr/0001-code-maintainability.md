@@ -1,6 +1,6 @@
 # ADR 0001: Code Maintainability and Quality Gates
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-24
 - Deciders: Project maintainer
 

@@ -1,6 +1,6 @@
 # ADR 0005: Quantized Artifact Format and Simulated Inference
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-24
 - Deciders: Project maintainer
 

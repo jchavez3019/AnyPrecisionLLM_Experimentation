@@ -1,6 +1,6 @@
 # Wave 0: Package Core, Quantization Pipeline, and First Evaluation
 
-- Status: Proposed
+- Status: Implemented
 - Date: 2026-09-25
 - Related ADRs: [0001](../../adr/0001-code-maintainability.md), [0002](../../adr/0002-project-layout-and-architecture.md), [0003](../../adr/0003-fisher-weighted-kmeans-methodology.md), [0004](../../adr/0004-evaluation-protocol.md), [0005](../../adr/0005-artifact-format-and-simulated-inference.md), [0006](../../adr/0006-hadamard-rotation.md)
 

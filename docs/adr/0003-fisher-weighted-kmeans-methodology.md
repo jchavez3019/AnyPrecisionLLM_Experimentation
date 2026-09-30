@@ -1,6 +1,6 @@
 # ADR 0003: Methodology — Fisher-Weighted k-Means with Incremental Upscaling
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-24
 - Deciders: Project maintainer
 
@@ -49,6 +49,24 @@ $$
 
 where $F$ is the (true) Fisher information matrix. This is the precise sense in which the method optimizes answer quality: it minimizes a local approximation of the output-distribution shift, which is also the KL metric evaluated in [ADR 0004](0004-evaluation-protocol.md).
 
+**Background: the score and the two forms of the Fisher.** For a distribution $p_\theta(y)$, the gradient of the log-likelihood, $s_\theta(y) = \nabla_\theta \log p_\theta(y)$, is the *score*. Its expectation under the model is zero, since $\sum_y p_\theta(y)\,\nabla_\theta \log p_\theta(y) = \nabla_\theta \sum_y p_\theta(y) = 0$. The Fisher has two equal forms, both taken under the model's own distribution:
+
+$$
+F = \mathbb{E}_{y \sim p_\theta}\left[s_\theta(y)\, s_\theta(y)^\top\right] = -\,\mathbb{E}_{y \sim p_\theta}\left[\nabla_\theta^2 \log p_\theta(y)\right].
+$$
+
+The Hessian of $\mathcal{L}(\delta)$ at $\delta = 0$ is exactly the true Fisher above, because the KL is taken against the model itself. The outer-product form needs only first derivatives, which is why every estimator below uses it. The two forms agree only under $y \sim p_\theta$. With observed labels, $\mathbb{E}_{\text{data}}[s\,s^\top] \ne -\mathbb{E}_{\text{data}}[\nabla^2 \log p]$, which is one reason an estimate built from data labels is only a rough curvature proxy (Kunstner et al., 2019).
+
+Three estimators share these names, and they differ only in the label placed at each position:
+
+| Name | Label at position $t$ | Estimates |
+| --- | --- | --- |
+| True Fisher | expectation over every $y$ in the vocabulary | $F$ exactly |
+| Sampled (Monte Carlo) Fisher | $y \sim p_\theta(\cdot \mid x_{\lt t})$ | $F$, without bias |
+| Empirical Fisher | the observed token $x_t$ | a different matrix, close to $F$ only where the model fits the data |
+
+The exact expectation costs about $V = 100{,}352$ backward passes per position, which is out of reach. One sampled label per position costs the same single backward pass as the observed label, so the sampled Fisher is a cheap ablation (listed under Consequences).
+
 **Approximation 1: empirical Fisher.** Instead of sampling $y$ from the model, use the observed next tokens and per-sequence gradients. With $\ell_i(\theta) = \frac{1}{T-1}\sum_{t} -\log p_\theta(x^{(i)}_t \mid x^{(i)}_{\lt t})$, the mean token negative log-likelihood of sequence $i$ (what `model(input_ids=x, labels=x).loss` returns),
 
 $$
@@ -56,6 +74,21 @@ $$
 $$
 
 This matches the reference implementation. It differs from $F$ by using data labels rather than model samples and by averaging token gradients within a sequence before squaring. Positive constant factors ($\tfrac12$, $1/N$, $1/(T-1)^2$) do not change any minimizer below and are dropped.
+
+**What averaging before squaring does.** Write $g_{i,t} = \nabla_\theta \log p_\theta(x^{(i)}_t \mid x^{(i)}_{\lt t})$, so that $\nabla_\theta \ell_i = -\frac{1}{T-1}\sum_t g_{i,t}$. Up to the dropped constant, each sequence contributes
+
+$$
+\Big(\sum_t g_{i,t}\Big)\Big(\sum_t g_{i,t}\Big)^\top
+= \underbrace{\sum_t g_{i,t}\, g_{i,t}^\top}_{\text{per-token empirical Fisher}}
+\;+\; \underbrace{\sum_{t \ne s} g_{i,t}\, g_{i,s}^\top}_{\text{within-sequence cross terms}} .
+$$
+
+The first term is the per-token estimator; the second is what averaging adds.
+
+- **With sampled labels, the cross terms vanish in expectation.** For $t \lt s$, the score at $s$ has zero mean given everything before it, $\mathbb{E}[g_s \mid y_{\lt s}] = 0$, so $\mathbb{E}[g_t\, g_s^\top] = \mathbb{E}\big[g_t\, \mathbb{E}[g_s \mid y_{\lt s}]^\top\big] = 0$. The per-token scores form a sequence with zero-mean increments, and the squared per-sequence gradient is an unbiased but noisier estimate of the per-token sum.
+- **With observed labels, that argument fails.** $\mathbb{E}_{\text{data}}[g_t]$ need not be zero at each position, and gradients of nearby tokens are correlated, so the cross terms add bias as well as noise.
+- **The effective sample size falls from about $N(T-1) = 51{,}100$ squared terms to $N = 100$.** Under Gaussian, independent token gradients, the coefficient of variation of one diagonal entry is about 14% for the per-sequence estimator, against about 0.6% for the per-token one. The derivation, and estimators that avoid the averaging, are in [ADR 0008](0008-batched-and-per-token-fisher.md).
+- **Why the per-sequence estimator still works.** The empirical Fisher is extremely concentrated: in attention rows, the top 1% of entries carry a median 77–91% of the row's mass (Section 3). Noise of about 14% on each entry barely changes which weights the centroids follow. The package's per-module errors match notebook 02's to within 1% ([wave 0 results](../waves/wave_0/results.md)).
 
 **Approximation 2: diagonal.** Keep only the diagonal, $\delta^\top \hat F \delta \approx \sum_i \hat F_{ii}\,\delta_i^2$. This discards all interactions between weights; methods that keep them (GPTQ, via $XX^\top$) compensate errors across columns, which is exactly what makes them incompatible with upscaling.
 
@@ -68,6 +101,21 @@ $$
 This is **weighted k-means in one dimension** with $K_b$ clusters.
 
 **Sensitivity conditioning.** Following the reference implementation, weights that are exactly zero receive $f_j = 0$. If a row's sensitivities sum to zero, the row falls back to $f_j = 1$ for all $j$ (unweighted k-means). Fisher entries are accumulated in float32; the reference stores them in bfloat16, where small squared gradients can underflow.
+
+**How PyTorch computes the per-sequence gradient.** Approximation 1 squares each sequence's gradient before summing over sequences. The steps of an ordinary training loop show why that forces one sequence per backward pass.
+
+1. **The training loop.** In an ordinary PyTorch training step, `optimizer.zero_grad()` clears every `.grad`. The forward pass records a graph of operations and keeps the tensors backward will need, mainly each layer's input activations. The loss is reduced to a scalar, and `loss.backward()` walks the graph in reverse from $\partial L / \partial L = 1$. At each operation it multiplies the incoming gradient by that operation's local Jacobian (a vector-Jacobian product), so no Jacobian is ever built. The result is *added* into each parameter's `.grad`, which is why `zero_grad()` exists. In `estimate_fisher`, the post-accumulate hook sets `.grad = None` after squaring, which does the same job one parameter at a time.
+2. **Where a batch is reduced.** For a linear layer $y = Wa$, let a batch hold $Q$ sequences (its *batch items*, indexed by $q$; "row" is reserved for rows of $W$). Its input activations are $A \in \mathbb{R}^{Q \times T \times n}$ and its output gradients $\Delta = \partial L / \partial y \in \mathbb{R}^{Q \times T \times m}$. The weight gradient autograd computes is
+
+   $$
+   \nabla_W L = \sum_{q=1}^{Q}\sum_{t=1}^{T} \delta_{q,t}\, a_{q,t}^\top = \Delta^\top A,
+   \qquad [m,\; Q \cdot T] \times [Q \cdot T,\; n] \to [m,\; n],
+   $$
+
+   which is `torch.einsum("qtm,qtn->mn", Δ, A)`. One contraction sums over sequences and tokens together. The per-sequence gradients exist only as partial sums inside it, never as tensors that could be squared.
+3. **Why skipping the mean does not help.** Without `.mean()`, the loss is a vector of per-sequence losses $[\ell_1, \dots, \ell_Q]$. `backward()` on a non-scalar needs a `gradient` argument $v \in \mathbb{R}^Q$, and it returns one weighted sum, $\sum_q v_q \nabla_\theta \ell_q$. Reverse mode produces one vector-Jacobian product per pass; the full $[Q, P]$ Jacobian over $P$ parameters takes $Q$ passes.
+4. **The consequence.** A naively batched backward would square $\sum_q \nabla_\theta \ell_q$ rather than sum the squares, bringing in cross terms $\nabla \ell_q \nabla \ell_{q'}^\top$ between unrelated sequences. `estimate_fisher` therefore runs one sequence per `backward()` and squares each gradient as soon as it is complete. Sequences are independent in the forward pass (eval mode, per-token RMSNorm, attention within each sequence, no mixture-of-experts routing in Granite-350M), so their gradients *can* be separated inside one batched pass. [ADR 0008](0008-batched-and-per-token-fisher.md) specifies the layer hooks that do it, contracting over tokens only: `einsum("qtm,qtn->qmn", Δ, A)`.
+5. **Why tokens cannot be separated the same way.** Through attention, the loss at position $t$ depends on $W$ as applied at every earlier position, so $\nabla_W \ell_t = \sum_{s \le t} \delta_{t,s}\, a_s^\top$ is not rank one, and the per-token terms of step 2 are not per-token gradients. The per-token empirical Fisher needs one backward pass per token, or the batched methods of ADR 0008.
 
 ### 2. Structure of the 1D problem
 
@@ -167,6 +215,7 @@ def estimate_fisher(model, calibration_tokens, target_modules) -> dict[str, Tens
         W.register_post_accumulate_grad_hook(hook)
 
     model.eval()
+    # One sequence per backward pass, so no two sequences share a reduction (Section 1).
     for tokens in calibration_tokens:                                  # each [1, T]
         loss = model(input_ids=tokens, labels=tokens).loss             # mean token NLL
         loss.backward()
@@ -291,7 +340,7 @@ def quantize_model(weights, fisher, cfg) -> ModelQuantization:  # weights: name 
 | Parent bit-width $B$ | 8 | Paper and reference |
 | Codebook granularity | One per row (`group_count = 1`) | Reference default |
 | Calibration | C4 train shard, 100 × 512 tokens, seed 0 | Reference default ([ADR 0002](0002-project-layout-and-architecture.md)) |
-| Fisher variant | Empirical, float32 accumulation | This ADR |
+| Fisher variant | Empirical, per sequence, one sequence per backward pass, float32 accumulation (`fisher.granularity: sequence`, `fisher.batch_size: 1`) | This ADR; the alternatives are in [ADR 0008](0008-batched-and-per-token-fisher.md) |
 | Seed initialization | Weighted greedy k-means++, $2 + \lfloor \ln K \rfloor$ local trials | Reference (`flash1dkmeans`) |
 | Initialization seed (`quantizer.seed`) | 0, expanded per layer and per row chunk | This ADR |
 | Rows per kernel call (`quantizer.row_chunk`) | 1024 | This ADR; bounds the `[R, L, n]` k-means++ trial tensor |
@@ -309,6 +358,7 @@ The method is implemented in a few hundred lines of batched PyTorch whose key st
 - Positive: no Numba, no external k-means package, no CUDA extension; each property in Section 4 maps to a property-based test; the standalone mode reproduces the paper's main comparison.
 - Negative: Lloyd's algorithm finds a local optimum that depends on the k-means++ draw, and our RNG stream differs from `flash1dkmeans`, so per-row codebooks will not match the reference bit-for-bit. Per-row codebooks are also expensive in memory for a model with 1024-wide rows (quantified in [ADR 0004](0004-evaluation-protocol.md)).
 - Negative: the empirical Fisher is not bitwise reproducible on the GPU. CUDA backward kernels accumulate in a nondeterministic order, and two runs on the same data differed in the third significant digit of individual entries. Downstream results are reproducible because the Fisher diagonals are computed once and cached ([ADR 0002](0002-project-layout-and-architecture.md)). Enabling `torch.use_deterministic_algorithms` is an option if bitwise reproducibility is ever required.
+- Negative: averaging token gradients before squaring leaves each Fisher entry resting on 100 samples rather than about 51,000, which makes it noisier (Section 1). [ADR 0008](0008-batched-and-per-token-fisher.md) adds an opt-in per-token estimator, and batching for both, behind the `fisher` config group.
 - Future work:
   - **True Fisher**: sample labels from $p_\theta$ instead of using data tokens; a clean ablation of Approximation 1.
   - **Nested uniform round-to-nearest baseline**: split each uniform bin at its midpoint; the simplest nested comparator.

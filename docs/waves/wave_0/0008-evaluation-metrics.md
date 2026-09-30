@@ -1,6 +1,6 @@
 # Spec 0008: Evaluation Metrics
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0004](../../adr/0004-evaluation-protocol.md), Metric 1 (KL and top-1 agreement), Metric 2 (perplexity), Metric 5 (bits per weight), and the results format
 

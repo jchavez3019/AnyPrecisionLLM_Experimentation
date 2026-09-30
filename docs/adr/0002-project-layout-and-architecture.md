@@ -1,6 +1,6 @@
 # ADR 0002: Project Layout and Core Architecture
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-24
 - Deciders: Project maintainer
 
@@ -151,6 +151,7 @@ Hydra composes the configuration from groups; the entry script converts it with 
 defaults:
   - model: granite_4_0_350m
   - calibration: c4
+  - fisher: default       # the Fisher estimator (ADR 0008)
   - quantizer: kmeans_iu
   - rotation: none
   - _self_
@@ -169,7 +170,7 @@ hydra:
     dir: ${output.base_dir}/quantize/${now:%Y-%m-%d}/${now:%H-%M-%S}
 ```
 
-`configs/evaluate.yaml` composes the same `model`, `calibration`, `quantizer`, and `rotation` groups, which it needs to recompute the keys of the artifacts it evaluates, plus the `eval` group. It has the same `seed`, `device`, and `output` keys, and one more:
+`configs/evaluate.yaml` composes the same `model`, `calibration`, `fisher`, `quantizer`, and `rotation` groups, which it needs to recompute the keys of the artifacts it evaluates, plus the `eval` group. It has the same `seed`, `device`, and `output` keys, and one more:
 
 ```yaml
 modes: [incremental, standalone]   # which quantized artifacts to evaluate; each must already exist
@@ -201,7 +202,7 @@ Expensive intermediate results are cached under `outputs/cache/` and keyed by a 
 
 | Artifact | Key depends on |
 | --- | --- |
-| Fisher diagonals | `model.model_id`, `model.revision`, `model.dtype`, `calibration.*`, `rotation.*` |
+| Fisher diagonals | `model.model_id`, `model.revision`, `model.dtype`, `calibration.*`, `fisher.granularity`, `fisher.positions_per_sequence`, `rotation.*` ([ADR 0008](0008-batched-and-per-token-fisher.md) explains why the other `fisher` fields are left out) |
 | Quantized artifact | Fisher key, `quantizer.*` |
 | Evaluation results | Not cached; written to the Hydra run directory with a copy of the resolved config |
 

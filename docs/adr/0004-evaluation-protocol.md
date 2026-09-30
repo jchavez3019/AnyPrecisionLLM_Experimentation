@@ -1,6 +1,6 @@
 # ADR 0004: Evaluation Protocol for Answer Quality
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-24
 - Deciders: Project maintainer
 

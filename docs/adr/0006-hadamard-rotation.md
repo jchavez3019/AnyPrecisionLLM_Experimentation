@@ -1,6 +1,6 @@
 # ADR 0006: Hadamard Rotation Before Clustering (Opt-In, Deferred)
 
-- Status: Proposed
+- Status: Deferred
 - Date: 2026-09-24
 - Deciders: Project maintainer
 

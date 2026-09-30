@@ -1,6 +1,6 @@
 # Spec 0002: Configuration and Cache Keys
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (Hydra and pydantic, caching), [ADR 0006](../../adr/0006-hadamard-rotation.md) (rotation group)
 

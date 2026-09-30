@@ -1,6 +1,6 @@
 # Spec 0001: Package Layout and Module Boundaries
 
-- Status: Proposed
+- Status: Implemented
 - Wave: [0](index.md)
 - Implements: [ADR 0002](../../adr/0002-project-layout-and-architecture.md) (repository layout)
 
